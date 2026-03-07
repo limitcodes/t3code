@@ -13,6 +13,12 @@ import {
 } from "../appSettings";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
+import {
+  CUSTOM_THEME_OPTIONS,
+  CUSTOM_THEME_OPTIONS_BY_ID,
+  isCustomThemeId,
+  type CustomThemeId,
+} from "../lib/customThemes";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
 import { preferredTerminalEditor } from "../terminal-links";
@@ -87,7 +93,15 @@ function patchCustomModels(provider: ProviderKind, models: string[]) {
 }
 
 function SettingsRouteView() {
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const {
+    theme,
+    setTheme,
+    resolvedTheme,
+    baseResolvedTheme,
+    customThemeId,
+    customThemeEnabled,
+    activeCustomTheme,
+  } = useTheme();
   const { settings, defaults, updateSettings } = useAppSettings();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const [isOpeningKeybindings, setIsOpeningKeybindings] = useState(false);
@@ -105,6 +119,7 @@ function SettingsRouteView() {
   const codexHomePath = settings.codexHomePath;
   const codexServiceTier = settings.codexServiceTier;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
+  const selectedCustomTheme = CUSTOM_THEME_OPTIONS_BY_ID[customThemeId];
 
   const openKeybindingsFile = useCallback(() => {
     if (!keybindingsConfigPath) return;
@@ -238,8 +253,110 @@ function SettingsRouteView() {
               </div>
 
               <p className="mt-4 text-xs text-muted-foreground">
-                Active theme: <span className="font-medium text-foreground">{resolvedTheme}</span>
+                Active appearance: <span className="font-medium text-foreground">{resolvedTheme}</span>
               </p>
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">Custom theme</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Choose a fully integrated preset for the app UI, diff panels, and syntax-highlighted code.
+                </p>
+              </div>
+
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-foreground">Theme preset</span>
+                <Select
+                  items={CUSTOM_THEME_OPTIONS.map((option) => ({
+                    label: option.label,
+                    value: option.id,
+                  }))}
+                  value={customThemeId}
+                  onValueChange={(value) => {
+                    if (!value || !isCustomThemeId(value)) return;
+                    updateSettings({ customThemeId: value as CustomThemeId });
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectPopup alignItemWithTrigger={false}>
+                    {CUSTOM_THEME_OPTIONS.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <span className="truncate text-sm text-foreground">{option.label}</span>
+                          <span className="truncate text-muted-foreground text-xs">
+                            {option.description}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+                <span className="text-xs text-muted-foreground">
+                  {selectedCustomTheme.description}
+                </span>
+              </label>
+
+              <div className="mt-4 rounded-lg border border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+                <p>
+                  Status:{" "}
+                  <span className="font-medium text-foreground">
+                    {customThemeEnabled ? "Enabled" : "Disabled"}
+                  </span>
+                </p>
+                <p className="mt-1">
+                  Selected preset:{" "}
+                  <span className="font-medium text-foreground">
+                    {selectedCustomTheme.label}
+                  </span>
+                </p>
+                <p className="mt-1">
+                  Applied theme:{" "}
+                  <span className="font-medium text-foreground">
+                    {activeCustomTheme?.label ?? "Default theme"}
+                  </span>
+                </p>
+                <p className="mt-1">
+                  Effective appearance:{" "}
+                  <span className="font-medium text-foreground">{resolvedTheme}</span>
+                </p>
+                <p className="mt-1">
+                  Base appearance setting:{" "}
+                  <span className="font-medium text-foreground">{baseResolvedTheme}</span>
+                </p>
+                {customThemeId === "catppuccin-auto" ? (
+                  <p className="mt-1">
+                    Auto-selected Catppuccin flavor:{" "}
+                    <span className="font-medium text-foreground">
+                      {activeCustomTheme?.label ?? "Default theme"}
+                    </span>
+                  </p>
+                ) : null}
+                {activeCustomTheme && activeCustomTheme.appearance !== baseResolvedTheme ? (
+                  <p className="mt-1">This preset overrides the base appearance while it is active.</p>
+                ) : null}
+                <p className="mt-1">
+                  Presets currently include Catppuccin, GitHub Dark, Nord, and Visual Studio 2017 Dark.
+                </p>
+              </div>
+
+              {settings.customThemeId !== defaults.customThemeId ? (
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() =>
+                      updateSettings({
+                        customThemeId: defaults.customThemeId,
+                      })
+                    }
+                  >
+                    Restore default
+                  </Button>
+                </div>
+              ) : null}
             </section>
 
             <section className="rounded-2xl border border-border bg-card p-5">
