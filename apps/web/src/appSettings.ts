@@ -3,6 +3,8 @@ import { Option, Schema } from "effect";
 import { type ProviderKind, type ProviderServiceTier } from "@t3tools/contracts";
 import { getDefaultModel, getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
 
+import { CUSTOM_THEME_IDS } from "./lib/customThemes";
+
 const APP_SETTINGS_STORAGE_KEY = "t3code:app-settings:v1";
 const MAX_CUSTOM_MODEL_COUNT = 32;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
@@ -25,6 +27,7 @@ export const APP_SERVICE_TIER_OPTIONS = [
 ] as const;
 export type AppServiceTier = (typeof APP_SERVICE_TIER_OPTIONS)[number]["value"];
 const AppServiceTierSchema = Schema.Literals(["auto", "fast", "flex"]);
+const CustomThemeIdSchema = Schema.Literals(CUSTOM_THEME_IDS);
 const MODELS_WITH_FAST_SUPPORT = new Set(["gpt-5.4"]);
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
@@ -47,6 +50,12 @@ const AppSettingsSchema = Schema.Struct({
   ),
   kimiApiKey: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     Schema.withConstructorDefault(() => Option.some("")),
+  ),
+  enableCatppuccinTheme: Schema.Boolean.pipe(
+    Schema.withConstructorDefault(() => Option.some(false)),
+  ),
+  customThemeId: CustomThemeIdSchema.pipe(
+    Schema.withConstructorDefault(() => Option.some("none")),
   ),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withConstructorDefault(() => Option.some(true))),
   enableAssistantStreaming: Schema.Boolean.pipe(
@@ -122,8 +131,15 @@ export function normalizeCustomModelSlugs(
 }
 
 function normalizeAppSettings(settings: AppSettings): AppSettings {
+  const customThemeId =
+    settings.customThemeId === "none" && settings.enableCatppuccinTheme
+      ? "catppuccin-auto"
+      : settings.customThemeId;
+
   return {
     ...settings,
+    customThemeId,
+    enableCatppuccinTheme: customThemeId === "catppuccin-auto",
     customCodexModels: normalizeCustomModelSlugs(settings.customCodexModels, "codex"),
     customCopilotModels: normalizeCustomModelSlugs(settings.customCopilotModels, "copilot"),
     customKimiModels: normalizeCustomModelSlugs(settings.customKimiModels, "kimi"),
@@ -267,8 +283,14 @@ function persistSettings(next: AppSettings): void {
   cachedSnapshot = next;
 }
 
-function subscribe(listener: () => void): () => void {
+export function subscribeAppSettings(listener: () => void): () => void {
   listeners.push(listener);
+
+  if (typeof window === "undefined") {
+    return () => {
+      listeners = listeners.filter((entry) => entry !== listener);
+    };
+  }
 
   const onStorage = (event: StorageEvent) => {
     if (event.key === APP_SETTINGS_STORAGE_KEY) {
@@ -285,7 +307,7 @@ function subscribe(listener: () => void): () => void {
 
 export function useAppSettings() {
   const settings = useSyncExternalStore(
-    subscribe,
+    subscribeAppSettings,
     getAppSettingsSnapshot,
     () => DEFAULT_APP_SETTINGS,
   );

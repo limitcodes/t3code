@@ -1,12 +1,36 @@
-export const DIFF_THEME_NAMES = {
+import {
+  APPLIED_CUSTOM_THEME_IDS,
+  APPLIED_CUSTOM_THEMES,
+  type AppliedCustomThemeId,
+  type SupportedHighlighterThemeName,
+} from "./customThemes";
+
+const DEFAULT_DIFF_THEME_NAMES = {
   light: "pierre-light",
   dark: "pierre-dark",
 } as const;
 
-export type DiffThemeName = (typeof DIFF_THEME_NAMES)[keyof typeof DIFF_THEME_NAMES];
+export type DiffThemeName =
+  | (typeof DEFAULT_DIFF_THEME_NAMES)[keyof typeof DEFAULT_DIFF_THEME_NAMES]
+  | SupportedHighlighterThemeName;
 
-export function resolveDiffThemeName(theme: "light" | "dark"): DiffThemeName {
-  return theme === "dark" ? DIFF_THEME_NAMES.dark : DIFF_THEME_NAMES.light;
+export const ALL_DIFF_THEME_NAMES = Array.from(
+  new Set([
+    DEFAULT_DIFF_THEME_NAMES.light,
+    DEFAULT_DIFF_THEME_NAMES.dark,
+    ...APPLIED_CUSTOM_THEME_IDS.map((id) => APPLIED_CUSTOM_THEMES[id].diffThemeName),
+  ]),
+) as ReadonlyArray<DiffThemeName>;
+
+export function resolveDiffThemeName(
+  theme: "light" | "dark",
+  activeCustomThemeId: AppliedCustomThemeId | null = null,
+): DiffThemeName {
+  if (activeCustomThemeId) {
+    return APPLIED_CUSTOM_THEMES[activeCustomThemeId].diffThemeName;
+  }
+
+  return theme === "dark" ? DEFAULT_DIFF_THEME_NAMES.dark : DEFAULT_DIFF_THEME_NAMES.light;
 }
 
 const FNV_OFFSET_BASIS_32 = 0x811c9dc5;

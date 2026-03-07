@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
-type Theme = "light" | "dark" | "system";
+import { getAppSettingsSnapshot, subscribeAppSettings } from "../appSettings";
+import {
+  isCustomThemeEnabled,
+  resolveAppliedCustomTheme,
+  type CustomThemeId,
+} from "../lib/customThemes";
+
+export type Theme = "light" | "dark" | "system";
+export type ResolvedTheme = "light" | "dark";
 type ThemeSnapshot = {
   theme: Theme;
   systemDark: boolean;
+  customThemeId: CustomThemeId;
 };
 
 const STORAGE_KEY = "t3code:theme";
@@ -15,22 +24,71 @@ function emitChange() {
   for (const listener of listeners) listener();
 }
 
+function hasDom(): boolean {
+  return typeof window !== "undefined" && typeof document !== "undefined";
+}
+
 function getSystemDark(): boolean {
+  if (!hasDom() || typeof window.matchMedia !== "function") {
+    return false;
+  }
   return window.matchMedia(MEDIA_QUERY).matches;
 }
 
 function getStored(): Theme {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!hasDom()) {
+    return "system";
+  }
+
+  const raw = window.localStorage.getItem(STORAGE_KEY);
   if (raw === "light" || raw === "dark" || raw === "system") return raw;
   return "system";
 }
 
-function applyTheme(theme: Theme, suppressTransitions = false) {
+function getStoredCustomThemeId(): CustomThemeId {
+  if (!hasDom()) {
+    return "none";
+  }
+
+  return getAppSettingsSnapshot().customThemeId;
+}
+
+export function resolveThemeAppearance(theme: Theme, systemDark: boolean): ResolvedTheme {
+  return theme === "system" ? (systemDark ? "dark" : "light") : theme;
+}
+
+export function resolveEffectiveThemeAppearance(
+  theme: Theme,
+  systemDark: boolean,
+  customThemeId: CustomThemeId,
+): ResolvedTheme {
+  const baseResolvedTheme = resolveThemeAppearance(theme, systemDark);
+  return resolveAppliedCustomTheme(customThemeId, baseResolvedTheme)?.appearance ?? baseResolvedTheme;
+}
+
+function applyTheme(
+  theme: Theme,
+  customThemeId = getStoredCustomThemeId(),
+  suppressTransitions = false,
+) {
+  if (!hasDom()) {
+    return;
+  }
+
   if (suppressTransitions) {
     document.documentElement.classList.add("no-transitions");
   }
-  const isDark = theme === "dark" || (theme === "system" && getSystemDark());
+  const baseResolvedTheme = resolveThemeAppearance(theme, getSystemDark());
+  const activeCustomTheme = resolveAppliedCustomTheme(customThemeId, baseResolvedTheme);
+  const resolvedTheme = activeCustomTheme?.appearance ?? baseResolvedTheme;
+  const isDark = resolvedTheme === "dark";
+
   document.documentElement.classList.toggle("dark", isDark);
+  if (activeCustomTheme) {
+    document.documentElement.dataset.theme = activeCustomTheme.dataTheme;
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
   if (suppressTransitions) {
     // Force a reflow so the no-transitions class takes effect before removal
     // oxlint-disable-next-line no-unused-expressions
@@ -42,27 +100,41 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
 }
 
 // Apply immediately on module load to prevent flash
-applyTheme(getStored());
+if (hasDom()) {
+  applyTheme(getStored(), getStoredCustomThemeId());
+}
 
 function getSnapshot(): ThemeSnapshot {
   const theme = getStored();
   const systemDark = theme === "system" ? getSystemDark() : false;
+  const customThemeId = getStoredCustomThemeId();
 
-  if (lastSnapshot && lastSnapshot.theme === theme && lastSnapshot.systemDark === systemDark) {
+  if (
+    lastSnapshot &&
+    lastSnapshot.theme === theme &&
+    lastSnapshot.systemDark === systemDark &&
+    lastSnapshot.customThemeId === customThemeId
+  ) {
     return lastSnapshot;
   }
 
-  lastSnapshot = { theme, systemDark };
+  lastSnapshot = { theme, systemDark, customThemeId };
   return lastSnapshot;
 }
 
 function subscribe(listener: () => void): () => void {
   listeners.push(listener);
 
+  if (!hasDom()) {
+    return () => {
+      listeners = listeners.filter((l) => l !== listener);
+    };
+  }
+
   // Listen for system preference changes
   const mq = window.matchMedia(MEDIA_QUERY);
   const handleChange = () => {
-    if (getStored() === "system") applyTheme("system", true);
+    if (getStored() === "system") applyTheme("system", getStoredCustomThemeId(), true);
     emitChange();
   };
   mq.addEventListener("change", handleChange);
@@ -70,36 +142,61 @@ function subscribe(listener: () => void): () => void {
   // Listen for storage changes from other tabs
   const handleStorage = (e: StorageEvent) => {
     if (e.key === STORAGE_KEY) {
-      applyTheme(getStored(), true);
+      applyTheme(getStored(), getStoredCustomThemeId(), true);
       emitChange();
     }
   };
   window.addEventListener("storage", handleStorage);
 
+  const unsubscribeAppSettings = subscribeAppSettings(() => {
+    applyTheme(getStored(), getStoredCustomThemeId(), true);
+    emitChange();
+  });
+
   return () => {
     listeners = listeners.filter((l) => l !== listener);
     mq.removeEventListener("change", handleChange);
     window.removeEventListener("storage", handleStorage);
+    unsubscribeAppSettings();
   };
 }
 
 export function useTheme() {
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, () => ({
+    theme: "system" as const,
+    systemDark: false,
+    customThemeId: "none" as const,
+  }));
   const theme = snapshot.theme;
+  const customThemeId = snapshot.customThemeId;
 
-  const resolvedTheme: "light" | "dark" =
-    theme === "system" ? (snapshot.systemDark ? "dark" : "light") : theme;
+  const baseResolvedTheme = resolveThemeAppearance(theme, snapshot.systemDark);
+  const activeCustomTheme = resolveAppliedCustomTheme(customThemeId, baseResolvedTheme);
+  const resolvedTheme = activeCustomTheme?.appearance ?? baseResolvedTheme;
 
   const setTheme = useCallback((next: Theme) => {
-    localStorage.setItem(STORAGE_KEY, next);
-    applyTheme(next, true);
+    if (!hasDom()) {
+      return;
+    }
+
+    window.localStorage.setItem(STORAGE_KEY, next);
+    applyTheme(next, getStoredCustomThemeId(), true);
     emitChange();
   }, []);
 
   // Keep DOM in sync on mount/change
   useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
+    applyTheme(theme, customThemeId);
+  }, [customThemeId, theme]);
 
-  return { theme, setTheme, resolvedTheme } as const;
+  return {
+    theme,
+    setTheme,
+    resolvedTheme,
+    baseResolvedTheme,
+    customThemeId,
+    customThemeEnabled: isCustomThemeEnabled(customThemeId),
+    activeCustomTheme,
+    activeCustomThemeId: activeCustomTheme?.id ?? null,
+  } as const;
 }
