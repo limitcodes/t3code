@@ -28,6 +28,7 @@ const DIFF_PANEL_UNSAFE_CSS = `
 [data-file],
 [data-error-wrapper],
 [data-virtualizer-buffer] {
+  --diffs-font-family: var(--font-code-snippet) !important;
   --diffs-bg: color-mix(in srgb, var(--card) 90%, var(--background)) !important;
   --diffs-light-bg: color-mix(in srgb, var(--card) 90%, var(--background)) !important;
   --diffs-dark-bg: color-mix(in srgb, var(--card) 90%, var(--background)) !important;
@@ -609,7 +610,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
               <div className="h-full overflow-auto p-2">
                 <div className="space-y-2">
                   <p className="text-[11px] text-muted-foreground/75">{renderablePatch.reason}</p>
-                  <pre className="max-h-[72vh] overflow-auto rounded-md border border-border/70 bg-background/70 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground/90">
+                  <pre className="code-snippet-font max-h-[72vh] overflow-auto rounded-md border border-border/70 bg-background/70 p-3 text-[11px] leading-relaxed text-muted-foreground/90">
                     {renderablePatch.text}
                   </pre>
                 </div>

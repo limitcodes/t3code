@@ -156,6 +156,13 @@ export function isCustomThemeEnabled(customThemeId: CustomThemeId): boolean {
   return customThemeId !== "none";
 }
 
+export function resolvePinnedCustomThemeAppearance(
+  customThemeId: CustomThemeId,
+): ThemeAppearance | null {
+  const appearance = CUSTOM_THEME_OPTIONS_BY_ID[customThemeId].appearance;
+  return appearance === "light" || appearance === "dark" ? appearance : null;
+}
+
 export function resolveAppliedCustomThemeId(
   customThemeId: CustomThemeId,
   baseAppearance: ThemeAppearance,
