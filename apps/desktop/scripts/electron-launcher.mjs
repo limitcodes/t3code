@@ -2,6 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   copyFileSync,
   cpSync,
   existsSync,
@@ -13,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +22,29 @@ const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
 const APP_BUNDLE_ID = "com.t3tools.t3code";
 const LAUNCHER_VERSION = 1;
+
+function slugifyDesktopFileId(value) {
+  return `${value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")}.desktop`;
+}
+
+function quoteDesktopExecToken(value) {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(value)
+    ? value
+    : `"${value.replace(/(["\\`$])/g, "\\$1")}"`;
+}
+
+function writeTextFileIfChanged(filePath, contents, mode) {
+  const current = existsSync(filePath) ? readFileSync(filePath, "utf8") : null;
+  if (current !== contents) {
+    writeFileSync(filePath, contents);
+  }
+  if (typeof mode === "number") {
+    chmodSync(filePath, mode);
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const desktopDir = resolve(__dirname, "..");
@@ -141,4 +166,61 @@ export function resolveElectronPath() {
   }
 
   return buildMacLauncher(electronBinaryPath);
+}
+
+export function resolveLinuxDesktopLaunchEnv({
+  electronBinaryPath,
+  mainEntryPath,
+  extraArgs = [],
+  extraEnv = {},
+}) {
+  if (process.platform !== "linux") {
+    return {};
+  }
+
+  try {
+    const applicationsDir = join(homedir(), ".local", "share", "applications");
+    const desktopFileId = slugifyDesktopFileId(APP_DISPLAY_NAME);
+    const desktopFilePath = join(applicationsDir, desktopFileId);
+    const resolvedMainEntryPath = resolve(desktopDir, mainEntryPath);
+    const iconPath = join(desktopDir, "resources", "icon.png");
+    const execTokens = [
+      "env",
+      `CHROME_DESKTOP=${desktopFileId}`,
+      ...Object.entries(extraEnv)
+        .filter(([, value]) => typeof value === "string" && value.length > 0)
+        .map(([key, value]) => `${key}=${value}`),
+      electronBinaryPath,
+      ...extraArgs,
+      resolvedMainEntryPath,
+    ];
+    const desktopEntry = [
+      "[Desktop Entry]",
+      "Version=1.0",
+      "Type=Application",
+      `Name=${APP_DISPLAY_NAME}`,
+      `Exec=${execTokens.map(quoteDesktopExecToken).join(" ")}`,
+      `Path=${desktopDir}`,
+      existsSync(iconPath) ? `Icon=${iconPath}` : null,
+      "Terminal=false",
+      "StartupNotify=true",
+      `StartupWMClass=${APP_DISPLAY_NAME}`,
+      `X-GNOME-WMClass=${APP_DISPLAY_NAME}`,
+      "NoDisplay=true",
+      "Categories=Development;",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    mkdirSync(applicationsDir, { recursive: true });
+    writeTextFileIfChanged(desktopFilePath, `${desktopEntry}\n`);
+
+    return {
+      CHROME_DESKTOP: desktopFileId,
+      BAMF_DESKTOP_FILE_HINT: desktopFilePath,
+    };
+  } catch (error) {
+    console.warn("[desktop] failed to prepare Linux desktop integration hints", error);
+    return {};
+  }
 }

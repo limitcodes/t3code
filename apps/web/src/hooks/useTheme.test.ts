@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveAppliedCustomTheme, resolveAppliedCustomThemeId } from "../lib/customThemes";
-import { resolveEffectiveThemeAppearance, resolveThemeAppearance } from "./useTheme";
+import {
+  resolveAppliedCustomTheme,
+  resolveAppliedCustomThemeId,
+  resolvePinnedCustomThemeAppearance,
+} from "../lib/customThemes";
+import {
+  resolveEffectiveThemeAppearance,
+  resolveSyncedThemeSelection,
+  resolveThemeAppearance,
+} from "./useTheme";
 
 describe("resolveThemeAppearance", () => {
   it("returns explicit light and dark preferences unchanged", () => {
@@ -51,5 +59,26 @@ describe("resolveAppliedCustomTheme", () => {
       "Catppuccin Mocha",
     );
     expect(resolveAppliedCustomTheme("github-dark-dimmed", "light")?.appearance).toBe("dark");
+  });
+});
+
+describe("resolvePinnedCustomThemeAppearance", () => {
+  it("returns pinned appearances for fixed presets only", () => {
+    expect(resolvePinnedCustomThemeAppearance("catppuccin-latte")).toBe("light");
+    expect(resolvePinnedCustomThemeAppearance("nord")).toBe("dark");
+    expect(resolvePinnedCustomThemeAppearance("catppuccin-auto")).toBeNull();
+    expect(resolvePinnedCustomThemeAppearance("none")).toBeNull();
+  });
+});
+
+describe("resolveSyncedThemeSelection", () => {
+  it("keeps theme selection aligned with pinned custom presets", () => {
+    expect(resolveSyncedThemeSelection("dark", "catppuccin-latte")).toBe("light");
+    expect(resolveSyncedThemeSelection("system", "visual-studio-2017-dark")).toBe("dark");
+  });
+
+  it("preserves the selected theme when the preset follows base appearance", () => {
+    expect(resolveSyncedThemeSelection("system", "catppuccin-auto")).toBe("system");
+    expect(resolveSyncedThemeSelection("dark", "none")).toBe("dark");
   });
 });

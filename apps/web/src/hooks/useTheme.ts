@@ -4,6 +4,7 @@ import { getAppSettingsSnapshot, subscribeAppSettings } from "../appSettings";
 import {
   isCustomThemeEnabled,
   resolveAppliedCustomTheme,
+  resolvePinnedCustomThemeAppearance,
   type CustomThemeId,
 } from "../lib/customThemes";
 
@@ -64,6 +65,10 @@ export function resolveEffectiveThemeAppearance(
 ): ResolvedTheme {
   const baseResolvedTheme = resolveThemeAppearance(theme, systemDark);
   return resolveAppliedCustomTheme(customThemeId, baseResolvedTheme)?.appearance ?? baseResolvedTheme;
+}
+
+export function resolveSyncedThemeSelection(theme: Theme, customThemeId: CustomThemeId): Theme {
+  return resolvePinnedCustomThemeAppearance(customThemeId) ?? theme;
 }
 
 function applyTheme(
@@ -167,7 +172,7 @@ export function useTheme() {
     systemDark: false,
     customThemeId: "none" as const,
   }));
-  const theme = snapshot.theme;
+  const theme = resolveSyncedThemeSelection(snapshot.theme, snapshot.customThemeId);
   const customThemeId = snapshot.customThemeId;
 
   const baseResolvedTheme = resolveThemeAppearance(theme, snapshot.systemDark);
@@ -184,10 +189,20 @@ export function useTheme() {
     emitChange();
   }, []);
 
-  // Keep DOM in sync on mount/change
   useEffect(() => {
+    if (!hasDom()) {
+      return;
+    }
+
+    if (theme !== snapshot.theme) {
+      window.localStorage.setItem(STORAGE_KEY, theme);
+      applyTheme(theme, customThemeId, true);
+      emitChange();
+      return;
+    }
+
     applyTheme(theme, customThemeId);
-  }, [customThemeId, theme]);
+  }, [customThemeId, snapshot.theme, theme]);
 
   return {
     theme,

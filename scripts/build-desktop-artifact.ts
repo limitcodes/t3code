@@ -472,6 +472,13 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       target: [target],
       icon: "icon.png",
       category: "Development",
+      executableName: "t3-code",
+      desktop: {
+        entry: {
+          StartupWMClass: productName,
+          "X-GNOME-WMClass": productName,
+        },
+      },
     };
   }
 

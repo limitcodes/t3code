@@ -2,6 +2,38 @@
 
 @custom-variant dark (&:is(.dark, .dark *));
 
+@font-face {
+  font-family: "Geist Sans";
+  src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Sans";
+  src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Italic[wght].woff2") format("woff2");
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Italic[wght].woff2") format("woff2");
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 @theme inline {
   --animate-skeleton: skeleton 2s -1s infinite linear;
   --color-warning-foreground: var(--warning-foreground);
@@ -63,6 +95,31 @@
 
 :root {
   color-scheme: light;
+  --font-user-message:
+    "Geist Sans",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    Inter,
+    "Segoe UI",
+    Roboto,
+    sans-serif,
+    "Apple Color Emoji",
+    "Segoe UI Emoji",
+    "Segoe UI Symbol",
+    "Noto Color Emoji";
+  --font-code-snippet:
+    "Geist Mono",
+    ui-monospace,
+    "SFMono-Regular",
+    "Roboto Mono",
+    Menlo,
+    Monaco,
+    "Liberation Mono",
+    "DejaVu Sans Mono",
+    "Courier New",
+    monospace;
   --radius: 0.625rem;
   --background: var(--color-white);
   --foreground: var(--color-neutral-800);
@@ -388,8 +445,18 @@ body::after {
   background-size: 256px 256px;
 }
 
-pre,
-code,
+code {
+  font-family: var(--font-code-snippet);
+}
+
+.code-snippet-font {
+  font-family: var(--font-code-snippet) !important;
+}
+
+.user-message-font {
+  font-family: var(--font-user-message);
+}
+
 textarea,
 input {
   font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
@@ -548,6 +615,7 @@ label:has(> select#reasoning-effort) select {
   padding: 0.1rem 0.35rem;
   color: var(--foreground);
   font-size: 0.75rem;
+  font-family: var(--font-code-snippet);
 }
 
 .chat-markdown pre {
@@ -557,6 +625,7 @@ label:has(> select#reasoning-effort) select {
   border-radius: 0.75rem;
   background: var(--muted);
   padding: 0.8rem 0.9rem;
+  font-family: var(--font-code-snippet);
 }
 
 .chat-markdown pre code {
@@ -565,6 +634,7 @@ label:has(> select#reasoning-effort) select {
   padding: 0;
   line-height: 1.5;
   font-size: 0.875rem;
+  font-family: inherit;
 }
 
 .chat-markdown .chat-markdown-codeblock {
@@ -611,6 +681,11 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown .chat-markdown-shiki .shiki {
   background: color-mix(in srgb, var(--muted) 78%, var(--background)) !important;
+  font-family: var(--font-code-snippet) !important;
+}
+
+.chat-markdown .chat-markdown-shiki .shiki code {
+  font-family: inherit !important;
 }
 
 .chat-markdown table {

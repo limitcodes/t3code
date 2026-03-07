@@ -76,6 +76,7 @@ let backendLogSink: RotatingFileSink | null = null;
 let restoreStdIoCapture: (() => void) | null = null;
 
 let destructiveMenuIconCache: Electron.NativeImage | null | undefined;
+let windowIconCache: Electron.NativeImage | null | undefined;
 const initialUpdateState = (): DesktopUpdateState => createInitialDesktopUpdateState(app.getVersion());
 
 function logTimestamp(): string {
@@ -571,6 +572,33 @@ function resolveResourcePath(fileName: string): string | null {
 
 function resolveIconPath(ext: "ico" | "icns" | "png"): string | null {
   return resolveResourcePath(`icon.${ext}`);
+}
+
+function resolveWindowIcon(): Electron.NativeImage | null {
+  if (process.platform === "darwin") {
+    return null;
+  }
+
+  if (windowIconCache !== undefined) {
+    return windowIconCache;
+  }
+
+  const ext = process.platform === "win32" ? "ico" : "png";
+  const iconPath = resolveIconPath(ext);
+  if (!iconPath) {
+    windowIconCache = null;
+    return windowIconCache;
+  }
+
+  const icon = nativeImage.createFromPath(iconPath);
+  if (icon.isEmpty()) {
+    console.warn(`[desktop] window icon asset could not be loaded from ${iconPath}`);
+    windowIconCache = null;
+    return windowIconCache;
+  }
+
+  windowIconCache = icon;
+  return windowIconCache;
 }
 
 function configureAppIdentity(): void {
@@ -1083,11 +1111,18 @@ function registerIpcHandlers(): void {
   });
 }
 
-function getIconOption(): { icon: string } | Record<string, never> {
-  if (process.platform === "darwin") return {}; // macOS uses .icns from app bundle
-  const ext = process.platform === "win32" ? "ico" : "png";
-  const iconPath = resolveIconPath(ext);
-  return iconPath ? { icon: iconPath } : {};
+function getIconOption(): { icon: Electron.NativeImage } | Record<string, never> {
+  const icon = resolveWindowIcon();
+  return icon ? { icon } : {};
+}
+
+function applyWindowIcon(window: BrowserWindow): void {
+  const icon = resolveWindowIcon();
+  if (!icon) {
+    return;
+  }
+
+  window.setIcon(icon);
 }
 
 function createWindow(): BrowserWindow {
@@ -1110,6 +1145,8 @@ function createWindow(): BrowserWindow {
     },
   });
 
+  applyWindowIcon(window);
+
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.on("page-title-updated", (event) => {
     event.preventDefault();
@@ -1120,6 +1157,7 @@ function createWindow(): BrowserWindow {
     emitUpdateState();
   });
   window.once("ready-to-show", () => {
+    applyWindowIcon(window);
     window.show();
   });
 
