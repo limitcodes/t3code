@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   deriveActivePlanState,
   deriveConfiguredModelOptions,
+  deriveConfiguredModelOptionsFromActivityGroups,
   PROVIDER_OPTIONS,
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -278,6 +279,54 @@ describe("deriveConfiguredModelOptions", () => {
     ]);
     expect(deriveConfiguredModelOptions(activities, "copilot")).toEqual([
       { slug: "claude-sonnet-4.5", name: "Claude Sonnet 4.5" },
+    ]);
+  });
+
+  it("reuses the newest configured catalog across different threads", () => {
+    const olderThreadActivities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "session-configured-kimi-old",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        kind: "session.configured",
+        summary: "Session configured",
+        tone: "info",
+        payload: {
+          provider: "kimi",
+          config: {
+            currentModelId: "kimi-for-coding",
+            availableModels: [{ modelId: "kimi-for-coding", name: "Kimi for Coding" }],
+          },
+        },
+      }),
+    ];
+    const newerThreadActivities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "session-configured-kimi-new",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        kind: "session.configured",
+        summary: "Session configured",
+        tone: "info",
+        payload: {
+          provider: "kimi",
+          config: {
+            currentModelId: "kimi-k2-thinking",
+            availableModels: [
+              { modelId: "kimi-for-coding", name: "Kimi for Coding" },
+              { modelId: "kimi-k2-thinking", name: "Kimi K2 Thinking" },
+            ],
+          },
+        },
+      }),
+    ];
+
+    expect(
+      deriveConfiguredModelOptionsFromActivityGroups(
+        [olderThreadActivities, newerThreadActivities],
+        "kimi",
+      ),
+    ).toEqual([
+      { slug: "kimi-for-coding", name: "Kimi for Coding" },
+      { slug: "kimi-k2-thinking", name: "Kimi K2 Thinking" },
     ]);
   });
 });

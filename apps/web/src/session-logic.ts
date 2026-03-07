@@ -294,7 +294,17 @@ export function deriveConfiguredModelOptions(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
   provider: ProviderKind,
 ): ConfiguredModelOption[] {
-  const ordered = [...activities].toSorted(compareActivitiesByOrder).toReversed();
+  return deriveConfiguredModelOptionsFromActivityGroups([activities], provider);
+}
+
+export function deriveConfiguredModelOptionsFromActivityGroups(
+  activityGroups: ReadonlyArray<ReadonlyArray<OrchestrationThreadActivity>>,
+  provider: ProviderKind,
+): ConfiguredModelOption[] {
+  const ordered = activityGroups
+    .flatMap((activities) => activities)
+    .toSorted(compareActivitiesByOrder)
+    .toReversed();
 
   for (const activity of ordered) {
     if (activity.kind !== "session.configured") {

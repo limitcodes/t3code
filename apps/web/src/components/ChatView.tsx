@@ -63,7 +63,7 @@ import {
   replaceTextRange,
 } from "../composer-logic";
 import {
-  deriveConfiguredModelOptions,
+  deriveConfiguredModelOptionsFromActivityGroups,
   derivePendingApprovals,
   derivePendingUserInputs,
   derivePhase,
@@ -694,7 +694,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [localDraftErrorsByThreadId, setLocalDraftErrorsByThreadId] = useState<
     Record<ThreadId, string | null>
   >({});
-  const [sendPhase, setSendPhase] = useState<SendPhase>("idle");
+  const [sendPhaseByThreadId, setSendPhaseByThreadId] = useState<Record<string, SendPhase>>({});
   const [isConnecting, _setIsConnecting] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
   const [respondingRequestIds, setRespondingRequestIds] = useState<ApprovalRequestId[]>([]);
@@ -749,7 +749,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const activeComposerMenuItemRef = useRef<ComposerCommandItem | null>(null);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
   const attachmentPreviewHandoffTimeoutByMessageIdRef = useRef<Record<string, number>>({});
-  const sendInFlightRef = useRef(false);
+  const sendInFlightByThreadIdRef = useRef<Record<string, boolean>>({});
   const dragDepthRef = useRef(0);
   const terminalOpenByThreadRef = useRef<Record<string, boolean>>({});
   const setMessagesScrollContainerRef = useCallback((element: HTMLDivElement | null) => {
@@ -766,6 +766,40 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const storeNewTerminal = useTerminalStateStore((s) => s.newTerminal);
   const storeSetActiveTerminal = useTerminalStateStore((s) => s.setActiveTerminal);
   const storeCloseTerminal = useTerminalStateStore((s) => s.closeTerminal);
+  const setThreadSendPhase = useCallback((targetThreadId: ThreadId, phase: SendPhase) => {
+    setSendPhaseByThreadId((existing) => {
+      const current = existing[targetThreadId] ?? "idle";
+      if (current === phase) {
+        return existing;
+      }
+      if (phase === "idle") {
+        if (!(targetThreadId in existing)) {
+          return existing;
+        }
+        const next = { ...existing };
+        delete next[targetThreadId];
+        return next;
+      }
+      return {
+        ...existing,
+        [targetThreadId]: phase,
+      };
+    });
+  }, []);
+  const setThreadSendInFlight = useCallback((targetThreadId: ThreadId, inFlight: boolean) => {
+    if (inFlight) {
+      sendInFlightByThreadIdRef.current[targetThreadId] = true;
+      return;
+    }
+    delete sendInFlightByThreadIdRef.current[targetThreadId];
+  }, []);
+  const isThreadSendInFlight = useCallback((targetThreadId: ThreadId | null | undefined) => {
+    if (!targetThreadId) {
+      return false;
+    }
+    return sendInFlightByThreadIdRef.current[targetThreadId] === true;
+  }, []);
+  const sendPhase = sendPhaseByThreadId[threadId] ?? "idle";
 
   const setPrompt = useCallback(
     (nextPrompt: string) => {
@@ -858,11 +892,20 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const selectedProvider: ProviderKind = lockedProvider ?? selectedProviderByThreadId ?? "codex";
   const configuredModelOptionsByProvider = useMemo(
     () => ({
-      codex: activeThread ? deriveConfiguredModelOptions(activeThread.activities, "codex") : [],
-      copilot: activeThread ? deriveConfiguredModelOptions(activeThread.activities, "copilot") : [],
-      kimi: activeThread ? deriveConfiguredModelOptions(activeThread.activities, "kimi") : [],
+      codex: deriveConfiguredModelOptionsFromActivityGroups(
+        threads.map((thread) => thread.activities),
+        "codex",
+      ),
+      copilot: deriveConfiguredModelOptionsFromActivityGroups(
+        threads.map((thread) => thread.activities),
+        "copilot",
+      ),
+      kimi: deriveConfiguredModelOptionsFromActivityGroups(
+        threads.map((thread) => thread.activities),
+        "kimi",
+      ),
     }),
-    [activeThread],
+    [threads],
   );
   const modelOptionsByProvider = useMemo(
     () => getCustomModelOptionsByProvider(settings, configuredModelOptionsByProvider),
@@ -2066,7 +2109,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }
       return [];
     });
-    setSendPhase("idle");
     setComposerHighlightedItemId(null);
     setComposerCursor(promptRef.current.length);
     setComposerTrigger(detectComposerTrigger(promptRef.current, promptRef.current.length));
@@ -2460,7 +2502,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onSend = async (e?: { preventDefault: () => void }) => {
     e?.preventDefault();
     const api = readNativeApi();
-    if (!api || !activeThread || isSendBusy || isConnecting || sendInFlightRef.current) return;
+    if (
+      !api ||
+      !activeThread ||
+      isSendBusy ||
+      isConnecting ||
+      isThreadSendInFlight(activeThread.id)
+    ) {
+      return;
+    }
     if (activePendingProgress) {
       onAdvanceActivePendingUserInput();
       return;
@@ -2517,8 +2567,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return;
     }
 
-    sendInFlightRef.current = true;
-    setSendPhase(baseBranchForWorktree ? "preparing-worktree" : "sending-turn");
+    setThreadSendInFlight(threadIdForSend, true);
+    setThreadSendPhase(
+      threadIdForSend,
+      baseBranchForWorktree ? "preparing-worktree" : "sending-turn",
+    );
 
     const composerImagesSnapshot = [...composerImages];
     const messageIdForSend = newMessageId();
@@ -2569,7 +2622,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     await (async () => {
       // On first message: lock in branch + create worktree if needed.
       if (baseBranchForWorktree) {
-        setSendPhase("preparing-worktree");
+        setThreadSendPhase(threadIdForSend, "preparing-worktree");
         const newBranch = buildTemporaryWorktreeBranchName();
         const result = await createWorktreeMutation.mutateAsync({
           cwd: activeProject.cwd,
@@ -2674,7 +2727,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         });
       }
 
-      setSendPhase("sending-turn");
+      setThreadSendPhase(threadIdForSend, "sending-turn");
       const turnAttachments = await turnAttachmentsPromise;
       await api.orchestration.dispatchCommand({
         type: "thread.turn.start",
@@ -2736,8 +2789,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
         err instanceof Error ? err.message : "Failed to send message.",
       );
     });
-    sendInFlightRef.current = false;
-    setSendPhase("idle");
+    setThreadSendInFlight(threadIdForSend, false);
+    setThreadSendPhase(threadIdForSend, "idle");
   };
 
   const onInterrupt = async () => {
@@ -2909,7 +2962,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         !isServerThread ||
         isSendBusy ||
         isConnecting ||
-        sendInFlightRef.current
+        isThreadSendInFlight(activeThread.id)
       ) {
         return;
       }
@@ -2925,8 +2978,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
       const messageIdForSend = newMessageId();
       const messageCreatedAt = new Date().toISOString();
 
-      sendInFlightRef.current = true;
-      setSendPhase("sending-turn");
+      setThreadSendInFlight(threadIdForSend, true);
+      setThreadSendPhase(threadIdForSend, "sending-turn");
       setThreadError(threadIdForSend, null);
       setOptimisticUserMessages((existing) => [
         ...existing,
@@ -2975,8 +3028,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
           interactionMode: nextInteractionMode,
           createdAt: messageCreatedAt,
         });
-        sendInFlightRef.current = false;
-        setSendPhase("idle");
+        setThreadSendInFlight(threadIdForSend, false);
+        setThreadSendPhase(threadIdForSend, "idle");
       } catch (err) {
         setOptimisticUserMessages((existing) =>
           existing.filter((message) => message.id !== messageIdForSend),
@@ -2985,8 +3038,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
           threadIdForSend,
           err instanceof Error ? err.message : "Failed to send plan follow-up.",
         );
-        sendInFlightRef.current = false;
-        setSendPhase("idle");
+        setThreadSendInFlight(threadIdForSend, false);
+        setThreadSendPhase(threadIdForSend, "idle");
       }
     },
     [
@@ -2995,6 +3048,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       forceStickToBottom,
       isConnecting,
       isSendBusy,
+      isThreadSendInFlight,
       isServerThread,
       persistThreadSettingsForNextTurn,
       runtimeMode,
@@ -3003,6 +3057,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
       providerOptionsForDispatch,
       selectedProvider,
       setComposerDraftInteractionMode,
+      setThreadSendInFlight,
+      setThreadSendPhase,
       setThreadError,
       settings.enableAssistantStreaming,
     ],
@@ -3018,7 +3074,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       !isServerThread ||
       isSendBusy ||
       isConnecting ||
-      sendInFlightRef.current
+      isThreadSendInFlight(activeThread.id)
     ) {
       return;
     }
@@ -3037,11 +3093,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
       (activeProject.model as ModelSlug) ||
       DEFAULT_MODEL_BY_PROVIDER.codex;
 
-    sendInFlightRef.current = true;
-    setSendPhase("sending-turn");
+    setThreadSendInFlight(activeThread.id, true);
+    setThreadSendPhase(activeThread.id, "sending-turn");
     const finish = () => {
-      sendInFlightRef.current = false;
-      setSendPhase("idle");
+      setThreadSendInFlight(activeThread.id, false);
+      setThreadSendPhase(activeThread.id, "idle");
     };
 
     await api.orchestration
@@ -3118,6 +3174,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     ensureKimiApiKeyConfigured,
     isConnecting,
     isSendBusy,
+    isThreadSendInFlight,
     isServerThread,
     navigate,
     runtimeMode,
@@ -3125,6 +3182,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedModelOptionsForDispatch,
     providerOptionsForDispatch,
     selectedProvider,
+    setThreadSendInFlight,
+    setThreadSendPhase,
     settings.enableAssistantStreaming,
     syncServerReadModel,
   ]);
