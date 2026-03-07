@@ -1,6 +1,6 @@
 # T3 Code
 
-T3 Code is a minimal web GUI for coding agents. It currently supports Codex and GitHub Copilot, with Claude Code coming soon.
+T3 Code is a minimal web GUI for coding agents. It currently supports Codex, GitHub Copilot, and Kimi Code, with Claude Code coming soon.
 
 ## How to use
 
@@ -9,6 +9,7 @@ T3 Code is a minimal web GUI for coding agents. It currently supports Codex and 
 >
 > - [Codex CLI](https://github.com/openai/codex)
 > - [GitHub Copilot CLI](https://docs.github.com/copilot/how-tos/use-copilot-agents/coding-agent/using-the-github-copilot-coding-agent-in-the-cli)
+> - [Kimi Code CLI](https://www.kimi.com/code/docs/en/)
 
 ```bash
 npx t3
@@ -18,7 +19,7 @@ You can also just install the desktop app. It's cooler.
 
 Install the [desktop app from the Releases page](https://github.com/pingdotgg/t3code/releases)
 
-Once the app is running, choose Codex or GitHub Copilot from the provider picker before starting a session.
+Once the app is running, choose Codex, GitHub Copilot, or Kimi Code from the provider picker before starting a session.
 
 ## Some notes
 

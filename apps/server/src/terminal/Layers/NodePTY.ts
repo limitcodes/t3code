@@ -1,7 +1,45 @@
 import { createRequire } from "node:module";
 
 import { Effect, FileSystem, Layer, Path } from "effect";
-import { PtyAdapter, PtyAdapterShape, PtyExitEvent, PtyProcess } from "../Services/PTY";
+import {
+  PtyAdapter,
+  PtyAdapterShape,
+  PtyExitEvent,
+  PtyProcess,
+  PtySpawnError,
+} from "../Services/PTY";
+
+interface NodePtyExitLike {
+  readonly exitCode: number;
+  readonly signal?: number | null;
+}
+
+interface NodePtyDisposableLike {
+  dispose(): void;
+}
+
+interface NodePtyProcessLike {
+  readonly pid: number;
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  kill(signal?: string): void;
+  onData(callback: (data: string) => void): NodePtyDisposableLike;
+  onExit(callback: (event: NodePtyExitLike) => void): NodePtyDisposableLike;
+}
+
+interface NodePtyModuleLike {
+  spawn(
+    file: string,
+    args: string[],
+    options: {
+      cwd: string;
+      cols: number;
+      rows: number;
+      env: NodeJS.ProcessEnv;
+      name: string;
+    },
+  ): NodePtyProcessLike;
+}
 
 let didEnsureSpawnHelperExecutable = false;
 
@@ -46,7 +84,7 @@ export const ensureNodePtySpawnHelperExecutable = Effect.fn(function* (explicitP
 });
 
 class NodePtyProcess implements PtyProcess {
-  constructor(private readonly process: import("node-pty").IPty) {}
+  constructor(private readonly process: NodePtyProcessLike) {}
 
   get pid(): number {
     return this.process.pid;
@@ -72,7 +110,7 @@ class NodePtyProcess implements PtyProcess {
   }
 
   onExit(callback: (event: PtyExitEvent) => void): () => void {
-    const disposable = this.process.onExit((event) => {
+    const disposable = this.process.onExit((event: NodePtyExitLike) => {
       callback({
         exitCode: event.exitCode,
         signal: event.signal ?? null,
@@ -84,13 +122,41 @@ class NodePtyProcess implements PtyProcess {
   }
 }
 
+function createUnavailablePtyAdapter(cause: unknown): PtyAdapterShape {
+  return {
+    spawn: () =>
+      Effect.fail(
+        new PtySpawnError({
+          adapter: "node-pty",
+          message: "Terminal support is unavailable because node-pty failed to load.",
+          cause,
+        }),
+      ),
+  } satisfies PtyAdapterShape;
+}
+
 export const NodePtyAdapterLive = Layer.effect(
   PtyAdapter,
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    const requireForNodePty = createRequire(import.meta.url);
 
-    const nodePty = yield* Effect.promise(() => import("node-pty"));
+    const nodePty = yield* Effect.try({
+      try: () => requireForNodePty("node-pty") as NodePtyModuleLike,
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.catch((cause) =>
+        Effect.sync(() => {
+          console.warn("[terminal] Falling back because node-pty failed to load.", cause);
+          return null;
+        }),
+      ),
+    );
+
+    if (nodePty === null) {
+      return createUnavailablePtyAdapter(new Error("node-pty module failed to load"));
+    }
 
     const ensureNodePtySpawnHelperExecutableCached = yield* Effect.cached(
       ensureNodePtySpawnHelperExecutable().pipe(
@@ -103,12 +169,22 @@ export const NodePtyAdapterLive = Layer.effect(
     return {
       spawn: Effect.fn(function* (input) {
         yield* ensureNodePtySpawnHelperExecutableCached;
-        const ptyProcess = nodePty.spawn(input.shell, input.args ?? [], {
-          cwd: input.cwd,
-          cols: input.cols,
-          rows: input.rows,
-          env: input.env,
-          name: globalThis.process.platform === "win32" ? "xterm-color" : "xterm-256color",
+        const ptyProcess = yield* Effect.try({
+          try: () =>
+            nodePty.spawn(input.shell, input.args ?? [], {
+              cwd: input.cwd,
+              cols: input.cols,
+              rows: input.rows,
+              env: input.env,
+              name:
+                globalThis.process.platform === "win32" ? "xterm-color" : "xterm-256color",
+            }),
+          catch: (cause) =>
+            new PtySpawnError({
+              adapter: "node-pty",
+              message: "Failed to spawn PTY process",
+              cause,
+            }),
         });
         return new NodePtyProcess(ptyProcess);
       }),

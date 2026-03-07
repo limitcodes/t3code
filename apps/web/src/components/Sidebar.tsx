@@ -489,32 +489,34 @@ export default function Sidebar() {
         setAddingProject(false);
       };
 
-      const existing = projects.find((project) => project.cwd === cwd);
-      if (existing) {
-        focusMostRecentThreadForProject(existing.id);
-        finishAddingProject();
-        return;
-      }
+      try {
+        const existing = projects.find((project) => project.cwd === cwd);
+        if (existing) {
+          focusMostRecentThreadForProject(existing.id);
+          return;
+        }
 
-      const projectId = newProjectId();
-      const createdAt = new Date().toISOString();
-      const title = cwd.split(/[/\\]/).findLast(isNonEmptyString) ?? cwd;
-      const projectCreated = await api.orchestration
-        .dispatchCommand({
-          type: "project.create",
-          commandId: newCommandId(),
-          projectId,
-          title,
-          workspaceRoot: cwd,
-          defaultModel: DEFAULT_MODEL_BY_PROVIDER.codex,
-          createdAt,
-        })
-        .then(() => true)
-        .catch(() => false);
-      if (projectCreated) {
-        await handleNewThread(projectId).catch(() => undefined);
+        const projectId = newProjectId();
+        const createdAt = new Date().toISOString();
+        const title = cwd.split(/[/\\]/).findLast(isNonEmptyString) ?? cwd;
+        const projectCreated = await api.orchestration
+          .dispatchCommand({
+            type: "project.create",
+            commandId: newCommandId(),
+            projectId,
+            title,
+            workspaceRoot: cwd,
+            defaultModel: DEFAULT_MODEL_BY_PROVIDER.codex,
+            createdAt,
+          })
+          .then(() => true)
+          .catch(() => false);
+        if (projectCreated) {
+          void handleNewThread(projectId).catch(() => undefined);
+        }
+      } finally {
+        finishAddingProject();
       }
-      finishAddingProject();
     },
     [focusMostRecentThreadForProject, handleNewThread, isAddingProject, projects],
   );

@@ -52,6 +52,17 @@ describe("getAppModelOptions", () => {
     });
   });
 
+  it("supports kimi model catalogs and custom entries", () => {
+    const options = getAppModelOptions("kimi", ["custom/kimi-model"]);
+
+    expect(options.some((option) => option.slug === "kimi-for-coding")).toBe(true);
+    expect(options.at(-1)).toEqual({
+      slug: "custom/kimi-model",
+      name: "custom/kimi-model",
+      isCustom: true,
+    });
+  });
+
   it("keeps the currently selected custom model available even if it is no longer saved", () => {
     const options = getAppModelOptions("codex", [], "custom/selected-model");
 
@@ -73,6 +84,7 @@ describe("resolveAppModelSelection", () => {
   it("falls back to the provider default when no model is selected", () => {
     expect(resolveAppModelSelection("codex", [], "")).toBe("gpt-5.4");
     expect(resolveAppModelSelection("copilot", [], "")).toBe("claude-sonnet-4.5");
+    expect(resolveAppModelSelection("kimi", [], "")).toBe("kimi-for-coding");
   });
 });
 

@@ -28,7 +28,6 @@ import {
   getDefaultReasoningEffort,
   getReasoningEffortOptions,
   normalizeModelSlug,
-  resolveModelSlugForProvider,
 } from "@t3tools/shared/model";
 import {
   memo,
@@ -64,6 +63,7 @@ import {
   replaceTextRange,
 } from "../composer-logic";
 import {
+  deriveConfiguredModelOptions,
   derivePendingApprovals,
   derivePendingUserInputs,
   derivePhase,
@@ -166,6 +166,7 @@ import {
   CursorIcon,
   Gemini,
   GitHubIcon,
+  KimiIcon,
   Icon,
   OpenAI,
   OpenCodeIcon,
@@ -255,11 +256,15 @@ function buildProviderOptionsForDispatch(input: {
     readonly codexBinaryPath: string;
     readonly codexHomePath: string;
     readonly copilotBinaryPath: string;
+    readonly kimiBinaryPath: string;
+    readonly kimiApiKey: string;
   };
 }): ProviderStartOptions | undefined {
   const codexBinaryPath = input.settings.codexBinaryPath.trim();
   const codexHomePath = input.settings.codexHomePath.trim();
   const copilotBinaryPath = input.settings.copilotBinaryPath.trim();
+  const kimiBinaryPath = input.settings.kimiBinaryPath.trim();
+  const kimiApiKey = input.settings.kimiApiKey.trim();
 
   switch (input.provider) {
     case "codex":
@@ -279,8 +284,37 @@ function buildProviderOptionsForDispatch(input: {
             },
           }
         : undefined;
+    case "kimi":
+      return kimiBinaryPath || kimiApiKey
+        ? {
+            kimi: {
+              ...(kimiBinaryPath ? { binaryPath: kimiBinaryPath } : {}),
+              ...(kimiApiKey ? { apiKey: kimiApiKey } : {}),
+            },
+          }
+        : undefined;
     default:
       return undefined;
+  }
+}
+
+function getCustomModelsForProvider(
+  provider: ProviderKind,
+  settings: {
+    readonly customCodexModels: readonly string[];
+    readonly customCopilotModels: readonly string[];
+    readonly customKimiModels: readonly string[];
+  },
+): readonly string[] {
+  switch (provider) {
+    case "codex":
+      return settings.customCodexModels;
+    case "copilot":
+      return settings.customCopilotModels;
+    case "kimi":
+      return settings.customKimiModels;
+    default:
+      return settings.customCodexModels;
   }
 }
 
@@ -614,7 +648,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const syncServerReadModel = useStore((store) => store.syncServerReadModel);
   const setStoreThreadError = useStore((store) => store.setError);
   const setStoreThreadBranch = useStore((store) => store.setThreadBranch);
-  const { settings } = useAppSettings();
+  const { settings, updateSettings } = useAppSettings();
   const navigate = useNavigate();
   const rawSearch = useSearch({
     strict: false,
@@ -676,6 +710,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
+  const [isKimiApiKeyDialogOpen, setIsKimiApiKeyDialogOpen] = useState(false);
+  const [kimiApiKeyDraft, setKimiApiKeyDraft] = useState("");
+  const [kimiApiKeyError, setKimiApiKeyError] = useState<string | null>(null);
   const [attachmentPreviewHandoffByMessageId, setAttachmentPreviewHandoffByMessageId] = useState<
     Record<string, string[]>
   >({});
@@ -701,6 +738,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const pendingInteractionAnchorFrameRef = useRef<number | null>(null);
   const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
+  const pendingKimiContinuationRef = useRef<
+    "submit-form" | "implement-plan-in-new-thread" | null
+  >(null);
   const composerFormHeightRef = useRef(0);
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
   const composerSelectLockRef = useRef(false);
@@ -816,12 +856,27 @@ export default function ChatView({ threadId }: ChatViewProps) {
     ? (sessionProvider ?? selectedProviderByThreadId ?? null)
     : null;
   const selectedProvider: ProviderKind = lockedProvider ?? selectedProviderByThreadId ?? "codex";
-  const baseThreadModel = resolveModelSlugForProvider(
-    selectedProvider,
-    activeThread?.model ?? activeProject?.model ?? getDefaultModel(selectedProvider),
+  const configuredModelOptionsByProvider = useMemo(
+    () => ({
+      codex: activeThread ? deriveConfiguredModelOptions(activeThread.activities, "codex") : [],
+      copilot: activeThread ? deriveConfiguredModelOptions(activeThread.activities, "copilot") : [],
+      kimi: activeThread ? deriveConfiguredModelOptions(activeThread.activities, "kimi") : [],
+    }),
+    [activeThread],
   );
-  const customModelsForSelectedProvider =
-    selectedProvider === "copilot" ? settings.customCopilotModels : settings.customCodexModels;
+  const modelOptionsByProvider = useMemo(
+    () => getCustomModelOptionsByProvider(settings, configuredModelOptionsByProvider),
+    [configuredModelOptionsByProvider, settings],
+  );
+  const customModelsForSelectedProvider = useMemo(
+    () => modelOptionsByProvider[selectedProvider].map((option) => option.slug),
+    [modelOptionsByProvider, selectedProvider],
+  );
+  const baseThreadModel = resolveAppModelSelection(
+    selectedProvider,
+    customModelsForSelectedProvider,
+    activeThread?.model ?? activeProject?.model ?? getDefaultModel(selectedProvider),
+  ) as ModelSlug;
   const selectedModel = useMemo(() => {
     const draftModel = composerDraft.model;
     if (!draftModel) {
@@ -856,11 +911,29 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }),
     [selectedProvider, settings],
   );
-  const selectedModelForPicker = selectedModel;
-  const modelOptionsByProvider = useMemo(
-    () => getCustomModelOptionsByProvider(settings),
-    [settings],
+  const openKimiApiKeyDialog = useCallback(
+    (continuation: "submit-form" | "implement-plan-in-new-thread") => {
+      pendingKimiContinuationRef.current = continuation;
+      setKimiApiKeyDraft(settings.kimiApiKey);
+      setKimiApiKeyError(null);
+      setIsKimiApiKeyDialogOpen(true);
+    },
+    [settings.kimiApiKey],
   );
+  const ensureKimiApiKeyConfigured = useCallback(
+    (continuation: "submit-form" | "implement-plan-in-new-thread") => {
+      if (selectedProvider !== "kimi") {
+        return true;
+      }
+      if (settings.kimiApiKey.trim().length > 0) {
+        return true;
+      }
+      openKimiApiKeyDialog(continuation);
+      return false;
+    },
+    [openKimiApiKeyDialog, selectedProvider, settings.kimiApiKey],
+  );
+  const selectedModelForPicker = selectedModel;
   const selectedModelForPickerWithCustomFallback = useMemo(() => {
     const currentOptions = modelOptionsByProvider[selectedProvider];
     return currentOptions.some((option) => option.slug === selectedModelForPicker)
@@ -2421,6 +2494,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return;
     }
     if (!trimmed && composerImages.length === 0) return;
+    if (!ensureKimiApiKeyConfigured("submit-form")) {
+      return;
+    }
     if (!activeProject) return;
     const threadIdForSend = activeThread.id;
     const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
@@ -2837,9 +2913,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
       ) {
         return;
       }
-
       const trimmed = text.trim();
       if (!trimmed) {
+        return;
+      }
+      if (!ensureKimiApiKeyConfigured("submit-form")) {
         return;
       }
 
@@ -2913,6 +2991,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     },
     [
       activeThread,
+      ensureKimiApiKeyConfigured,
       forceStickToBottom,
       isConnecting,
       isSendBusy,
@@ -2941,6 +3020,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
       isConnecting ||
       sendInFlightRef.current
     ) {
+      return;
+    }
+    if (!ensureKimiApiKeyConfigured("implement-plan-in-new-thread")) {
       return;
     }
 
@@ -3033,6 +3115,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     activeProject,
     activeProposedPlan,
     activeThread,
+    ensureKimiApiKeyConfigured,
     isConnecting,
     isSendBusy,
     isServerThread,
@@ -3045,6 +3128,30 @@ export default function ChatView({ threadId }: ChatViewProps) {
     settings.enableAssistantStreaming,
     syncServerReadModel,
   ]);
+  const saveKimiApiKey = useCallback(() => {
+    const trimmed = kimiApiKeyDraft.trim();
+    if (!trimmed) {
+      setKimiApiKeyError("Enter a Kimi API key.");
+      return;
+    }
+
+    const continuation = pendingKimiContinuationRef.current;
+    pendingKimiContinuationRef.current = null;
+    updateSettings({ kimiApiKey: trimmed });
+    setKimiApiKeyError(null);
+    setIsKimiApiKeyDialogOpen(false);
+
+    window.setTimeout(() => {
+      if (continuation === "submit-form") {
+        composerFormRef.current?.requestSubmit();
+        return;
+      }
+      if (continuation === "implement-plan-in-new-thread") {
+        void onImplementPlanInNewThread();
+      }
+    }, 0);
+  }, [kimiApiKeyDraft, onImplementPlanInNewThread, updateSettings]);
+  const kimiApiKeyDialogInputId = useId();
 
   const onProviderModelSelect = useCallback(
     (provider: ProviderKind, model: ModelSlug) => {
@@ -3058,7 +3165,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         activeThread.id,
         resolveAppModelSelection(
           provider,
-          provider === "copilot" ? settings.customCopilotModels : settings.customCodexModels,
+          getCustomModelsForProvider(provider, settings),
           model,
         ),
       );
@@ -3072,6 +3179,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       setComposerDraftProvider,
       settings.customCodexModels,
       settings.customCopilotModels,
+      settings.customKimiModels,
     ],
   );
   const onEffortSelect = useCallback(
@@ -3957,6 +4065,67 @@ export default function ChatView({ threadId }: ChatViewProps) {
           )}
         </div>
       )}
+
+      <Dialog
+        open={isKimiApiKeyDialogOpen}
+        onOpenChange={(open) => {
+          setIsKimiApiKeyDialogOpen(open);
+          if (!open) {
+            pendingKimiContinuationRef.current = null;
+            setKimiApiKeyDraft(settings.kimiApiKey);
+            setKimiApiKeyError(null);
+          }
+        }}
+      >
+        <DialogPopup className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Enter your Kimi API key</DialogTitle>
+            <DialogDescription>
+              T3 Code needs a Kimi Code API key to start Kimi CLI sessions for chat. You can generate one from the Kimi Code Console.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel className="space-y-3">
+            <label htmlFor={kimiApiKeyDialogInputId} className="grid gap-1.5">
+              <span className="text-xs font-medium text-foreground">Kimi API key</span>
+              <Input
+                id={kimiApiKeyDialogInputId}
+                type="password"
+                value={kimiApiKeyDraft}
+                onChange={(event) => {
+                  setKimiApiKeyDraft(event.target.value);
+                  if (kimiApiKeyError) {
+                    setKimiApiKeyError(null);
+                  }
+                }}
+                placeholder="sk-kimi-..."
+                autoComplete="new-password"
+                spellCheck={false}
+              />
+            </label>
+            <p className="text-xs text-muted-foreground">
+              The key is stored locally on this device and is only used when starting new Kimi Code sessions.
+            </p>
+            {kimiApiKeyError ? <p className="text-xs text-destructive">{kimiApiKeyError}</p> : null}
+          </DialogPanel>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                pendingKimiContinuationRef.current = null;
+                setIsKimiApiKeyDialogOpen(false);
+                setKimiApiKeyDraft(settings.kimiApiKey);
+                setKimiApiKeyError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button size="sm" onClick={saveKimiApiKey}>
+              Save key
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
     </div>
   );
 }
@@ -5333,19 +5502,52 @@ const COMING_SOON_PROVIDER_OPTIONS = [
   { id: "gemini", label: "Gemini", icon: Gemini },
 ] as const;
 
-function getCustomModelOptionsByProvider(settings: {
+function mergeModelOptions(
+  base: ReadonlyArray<{ slug: string; name: string }>,
+  extra: ReadonlyArray<{ slug: string; name: string }>,
+): Array<{ slug: string; name: string }> {
+  const merged: Array<{ slug: string; name: string }> = [];
+  const seen = new Set<string>();
+
+  for (const option of [...base, ...extra]) {
+    if (seen.has(option.slug)) {
+      continue;
+    }
+    seen.add(option.slug);
+    merged.push(option);
+  }
+
+  return merged;
+}
+
+function getCustomModelOptionsByProvider(
+  settings: {
   customCodexModels: readonly string[];
   customCopilotModels: readonly string[];
-}): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
+  customKimiModels: readonly string[];
+  },
+  configuredModelsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>,
+): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
   return {
-    codex: getAppModelOptions("codex", settings.customCodexModels),
-    copilot: getAppModelOptions("copilot", settings.customCopilotModels),
+    codex: mergeModelOptions(
+      getAppModelOptions("codex", settings.customCodexModels),
+      configuredModelsByProvider.codex,
+    ),
+    copilot: mergeModelOptions(
+      getAppModelOptions("copilot", settings.customCopilotModels),
+      configuredModelsByProvider.copilot,
+    ),
+    kimi: mergeModelOptions(
+      getAppModelOptions("kimi", settings.customKimiModels),
+      configuredModelsByProvider.kimi,
+    ),
   };
 }
 
 const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   codex: OpenAI,
   copilot: GitHubIcon,
+  kimi: KimiIcon,
   claudeCode: ClaudeAI,
   cursor: CursorIcon,
 };

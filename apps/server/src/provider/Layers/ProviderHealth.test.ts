@@ -7,6 +7,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   checkCodexProviderStatus,
   checkCopilotProviderStatus,
+  checkKimiProviderStatus,
   parseAuthStatusFromOutput,
 } from "./ProviderHealth";
 
@@ -115,6 +116,30 @@ it.effect("returns ready when copilot is installed and auth env is present", () 
   ),
 );
 
+it.effect("returns warning when kimi is installed but auth must be checked interactively", () =>
+  Effect.gen(function* () {
+    const status = yield* checkKimiProviderStatus;
+    assert.strictEqual(status.provider, "kimi");
+    assert.strictEqual(status.status, "warning");
+    assert.strictEqual(status.available, true);
+    assert.strictEqual(status.authStatus, "unknown");
+    assert.strictEqual(
+      status.message,
+      "Could not verify Kimi Code CLI authentication non-interactively. Run `kimi login` or add a Kimi API key in Settings if session start fails.",
+    );
+  }).pipe(
+    Effect.provide(
+      mockSpawnerLayer((commandName, args) => {
+        const joined = args.join(" ");
+        if (commandName === "kimi" && joined === "--version") {
+          return { stdout: "kimi 1.0.0\n", stderr: "", code: 0 };
+        }
+        throw new Error(`Unexpected args: ${joined}`);
+      }),
+    ),
+  ),
+);
+
 it.effect("returns unavailable when codex is missing", () =>
   Effect.gen(function* () {
     const status = yield* checkCodexProviderStatus;
@@ -124,6 +149,17 @@ it.effect("returns unavailable when codex is missing", () =>
     assert.strictEqual(status.authStatus, "unknown");
     assert.strictEqual(status.message, "Codex CLI (`codex`) is not installed or not on PATH.");
   }).pipe(Effect.provide(failingSpawnerLayer("spawn codex ENOENT"))),
+);
+
+it.effect("returns unavailable when kimi is missing", () =>
+  Effect.gen(function* () {
+    const status = yield* checkKimiProviderStatus;
+    assert.strictEqual(status.provider, "kimi");
+    assert.strictEqual(status.status, "error");
+    assert.strictEqual(status.available, false);
+    assert.strictEqual(status.authStatus, "unknown");
+    assert.strictEqual(status.message, "Kimi Code CLI (`kimi`) is not installed or not on PATH.");
+  }).pipe(Effect.provide(failingSpawnerLayer("spawn kimi ENOENT"))),
 );
 
 it.effect("returns unauthenticated when auth probe reports login required", () =>

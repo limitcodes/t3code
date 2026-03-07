@@ -53,6 +53,25 @@ describe("ProviderSessionStartInput", () => {
     expect(parsed.providerOptions?.copilot?.binaryPath).toBe("/usr/local/bin/copilot");
   });
 
+  it("accepts kimi-compatible payloads", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "kimi",
+      cwd: "/tmp/workspace",
+      model: "kimi-for-coding",
+      runtimeMode: "approval-required",
+      providerOptions: {
+        kimi: {
+          binaryPath: "/usr/local/bin/kimi",
+        },
+      },
+    });
+
+    expect(parsed.provider).toBe("kimi");
+    expect(parsed.model).toBe("kimi-for-coding");
+    expect(parsed.providerOptions?.kimi?.binaryPath).toBe("/usr/local/bin/kimi");
+  });
+
   it("rejects payloads without runtime mode", () => {
     expect(() =>
       decodeProviderSessionStartInput({
