@@ -173,6 +173,11 @@ import {
   Zed,
 } from "./Icons";
 import { cn, isMacPlatform, isWindowsPlatform } from "~/lib/utils";
+import {
+  formatTokenCountCompact,
+  formatTokenCountFull,
+  normalizeThreadTokenUsage,
+} from "~/lib/threadTokenUsage";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Command, CommandItem, CommandList } from "./ui/command";
@@ -3681,6 +3686,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                       {runtimeMode === "full-access" ? "Full access" : "Supervised"}
                     </span>
                   </Button>
+                  <ContextWindowMeter usage={activeThread.session?.tokenUsage} />
                 </div>
 
                 {/* Right side: send / stop button */}
@@ -4048,6 +4054,79 @@ const ChatHeader = memo(function ChatHeader({
         </Tooltip>
       </div>
     </div>
+  );
+});
+
+const ContextWindowMeter = memo(function ContextWindowMeter({ usage }: { usage: unknown }) {
+  const normalized = useMemo(() => normalizeThreadTokenUsage(usage), [usage]);
+  const ringId = useId();
+
+  if (!normalized) {
+    return null;
+  }
+
+  const radius = 6;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - normalized.usedFraction);
+  const toneClass =
+    normalized.usedPercent >= 85
+      ? "text-rose-500"
+      : normalized.usedPercent >= 65
+        ? "text-amber-500"
+        : "text-emerald-500";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-label="Context window"
+            className="inline-flex shrink-0 items-center gap-2 rounded-md px-2 py-1 text-muted-foreground/70 transition-colors hover:text-foreground/80"
+            data-testid="context-window-meter"
+          >
+            <svg className={cn("size-4 -rotate-90", toneClass)} viewBox="0 0 16 16" aria-hidden="true">
+              <circle
+                cx="8"
+                cy="8"
+                r={radius}
+                fill="none"
+                stroke="currentColor"
+                strokeOpacity="0.18"
+                strokeWidth="2"
+              />
+              <circle
+                cx="8"
+                cy="8"
+                r={radius}
+                fill="none"
+                stroke={`url(#${ringId})`}
+                strokeDasharray={circumference}
+                strokeDashoffset={dashOffset}
+                strokeLinecap="round"
+                strokeWidth="2"
+              />
+              <defs>
+                <linearGradient id={ringId} x1="2" y1="8" x2="14" y2="8" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="currentColor" stopOpacity="0.55" />
+                  <stop offset="1" stopColor="currentColor" />
+                </linearGradient>
+              </defs>
+            </svg>
+            <span className="hidden text-xs sm:inline">{normalized.remainingPercent}% left</span>
+          </span>
+        }
+      />
+      <TooltipPopup side="bottom" className="max-w-72">
+        <div className="space-y-0.5 text-sm">
+          <div className="text-muted-foreground/80">Context window</div>
+          <div>{`${normalized.usedPercent}% used (${normalized.remainingPercent}% left)`}</div>
+          <div>{`${formatTokenCountCompact(normalized.usedTokens)} / ${formatTokenCountCompact(normalized.maxTokens)} tokens used`}</div>
+          <div className="text-muted-foreground/80">
+            {`${formatTokenCountFull(normalized.remainingTokens)} tokens left`}
+          </div>
+        </div>
+      </TooltipPopup>
+    </Tooltip>
   );
 });
 

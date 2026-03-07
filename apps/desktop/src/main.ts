@@ -227,6 +227,7 @@ let updateCheckInFlight = false;
 let updateDownloadInFlight = false;
 let updaterConfigured = false;
 let updateState: DesktopUpdateState = initialUpdateState();
+const preconfiguredDesktopWsUrl = process.env.T3CODE_DESKTOP_WS_URL?.trim() || null;
 
 function resolveUpdaterErrorContext(): DesktopUpdateErrorContext {
   if (updateDownloadInFlight) return "download";
@@ -1142,21 +1143,31 @@ configureAppIdentity();
 
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader("bootstrap start");
-  backendPort = await Effect.service(NetService).pipe(
-    Effect.flatMap((net) => net.reserveLoopbackPort()),
-    Effect.provide(NetService.layer),
-    Effect.runPromise,
-  );
-  writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`);
-  backendAuthToken = Crypto.randomBytes(24).toString("hex");
-  backendWsUrl = `ws://127.0.0.1:${backendPort}/?token=${encodeURIComponent(backendAuthToken)}`;
-  process.env.T3CODE_DESKTOP_WS_URL = backendWsUrl;
-  writeDesktopLogHeader(`bootstrap resolved websocket url=${backendWsUrl}`);
+  if (preconfiguredDesktopWsUrl) {
+    backendWsUrl = preconfiguredDesktopWsUrl;
+    process.env.T3CODE_DESKTOP_WS_URL = backendWsUrl;
+    writeDesktopLogHeader(`bootstrap using preconfigured websocket url=${backendWsUrl}`);
+  } else {
+    backendPort = await Effect.service(NetService).pipe(
+      Effect.flatMap((net) => net.reserveLoopbackPort()),
+      Effect.provide(NetService.layer),
+      Effect.runPromise,
+    );
+    writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`);
+    backendAuthToken = Crypto.randomBytes(24).toString("hex");
+    backendWsUrl = `ws://127.0.0.1:${backendPort}/?token=${encodeURIComponent(backendAuthToken)}`;
+    process.env.T3CODE_DESKTOP_WS_URL = backendWsUrl;
+    writeDesktopLogHeader(`bootstrap resolved websocket url=${backendWsUrl}`);
+  }
 
   registerIpcHandlers();
   writeDesktopLogHeader("bootstrap ipc handlers registered");
-  startBackend();
-  writeDesktopLogHeader("bootstrap backend start requested");
+  if (!preconfiguredDesktopWsUrl) {
+    startBackend();
+    writeDesktopLogHeader("bootstrap backend start requested");
+  } else {
+    writeDesktopLogHeader("bootstrap skipped embedded backend start");
+  }
   mainWindow = createWindow();
   writeDesktopLogHeader("bootstrap main window created");
 }

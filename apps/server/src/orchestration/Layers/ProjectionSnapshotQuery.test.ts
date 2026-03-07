@@ -141,6 +141,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           runtime_mode,
           active_turn_id,
           last_error,
+          token_usage_json,
           updated_at
         )
         VALUES (
@@ -152,6 +153,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           'approval-required',
           'turn-1',
           NULL,
+          '{"usedTokens":99000,"maxTokens":950000}',
           '2026-02-24T00:00:07.000Z'
         )
       `;
@@ -290,6 +292,10 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             runtimeMode: "approval-required",
             activeTurnId: asTurnId("turn-1"),
             lastError: null,
+            tokenUsage: {
+              usedTokens: 99_000,
+              maxTokens: 950_000,
+            },
             updatedAt: "2026-02-24T00:00:07.000Z",
           },
         },

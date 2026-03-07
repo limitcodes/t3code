@@ -111,5 +111,6 @@ export interface ThreadSession {
   createdAt: string;
   updatedAt: string;
   lastError?: string;
+  tokenUsage?: unknown;
   orchestrationStatus: OrchestrationSessionStatus;
 }

@@ -7,7 +7,7 @@
 
 ## Project Snapshot
 
-T3 Code is a minimal web GUI for using code agents like Codex and Claude Code (coming soon).
+T3 Code is a minimal web GUI for using code agents like Codex and GitHub Copilot, with Claude Code coming soon.
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 
@@ -25,14 +25,14 @@ Long term maintainability is a core priority. If you add new functionality, firs
 
 ## Package Roles
 
-- `apps/server`: Node.js WebSocket server. Wraps Codex app-server (JSON-RPC over stdio), serves the React web app, and manages provider sessions.
+- `apps/server`: Node.js WebSocket server. Wraps Codex and GitHub Copilot provider runtimes, serves the React web app, and manages provider sessions.
 - `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state. Connects to the server via WebSocket.
 - `packages/contracts`: Shared effect/Schema schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types. Keep this package schema-only — no runtime logic.
 - `packages/shared`: Shared runtime utilities consumed by both server and web. Uses explicit subpath exports (e.g. `@t3tools/shared/git`) — no barrel index.
 
-## Codex App Server (Important)
+## Provider runtimes (Important)
 
-T3 Code is currently Codex-first. The server starts `codex app-server` (JSON-RPC over stdio) per provider session, then streams structured events to the browser through WebSocket push messages.
+T3 Code currently supports Codex and GitHub Copilot. The server starts either `codex app-server` (JSON-RPC over stdio) or `copilot --acp --no-ask-user` per provider session, then streams structured events to the browser through WebSocket push messages.
 
 How we use it in this codebase:
 
@@ -44,6 +44,7 @@ How we use it in this codebase:
 Docs:
 
 - Codex App Server docs: https://developers.openai.com/codex/sdk/#app-server
+- GitHub Copilot CLI docs: https://docs.github.com/copilot/how-tos/use-copilot-agents/coding-agent/using-the-github-copilot-coding-agent-in-the-cli
 
 ## Reference Repos
 

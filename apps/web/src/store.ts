@@ -242,6 +242,9 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
               activeTurnId: thread.session.activeTurnId ?? undefined,
               createdAt: thread.session.updatedAt,
               updatedAt: thread.session.updatedAt,
+              ...(thread.session.tokenUsage !== undefined
+                ? { tokenUsage: thread.session.tokenUsage }
+                : {}),
               ...(thread.session.lastError ? { lastError: thread.session.lastError } : {}),
             }
           : null,

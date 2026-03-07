@@ -60,7 +60,11 @@ const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
     sequence: Schema.NullOr(NonNegativeInt),
   }),
 );
-const ProjectionThreadSessionDbRowSchema = ProjectionThreadSession;
+const ProjectionThreadSessionDbRowSchema = ProjectionThreadSession.mapFields(
+  Struct.assign({
+    tokenUsage: Schema.NullOr(Schema.fromJsonString(Schema.Unknown)),
+  }),
+);
 const ProjectionCheckpointDbRowSchema = ProjectionCheckpoint.mapFields(
   Struct.assign({
     files: Schema.fromJsonString(Schema.Array(OrchestrationCheckpointFile)),
@@ -246,6 +250,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           runtime_mode AS "runtimeMode",
           active_turn_id AS "activeTurnId",
           last_error AS "lastError",
+          token_usage_json AS "tokenUsage",
           updated_at AS "updatedAt"
         FROM projection_thread_sessions
         ORDER BY thread_id ASC
@@ -507,10 +512,11 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               status: row.status,
               providerName: row.providerName,
               runtimeMode: row.runtimeMode,
-              activeTurnId: row.activeTurnId,
-              lastError: row.lastError,
-              updatedAt: row.updatedAt,
-            });
+            activeTurnId: row.activeTurnId,
+            lastError: row.lastError,
+            ...(row.tokenUsage !== undefined ? { tokenUsage: row.tokenUsage } : {}),
+            updatedAt: row.updatedAt,
+          });
           }
 
           const projects: Array<OrchestrationProject> = projectRows.map((row) => ({

@@ -869,6 +869,45 @@ describe("ChatView timeline estimator parity (full app)", () => {
   });
 });
 
+describe("ChatView context window meter", () => {
+  it("renders live token usage next to the runtime mode toggle", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-context-meter" as MessageId,
+        targetText: "show my remaining context",
+      }),
+      configureFixture: (nextFixture) => {
+        nextFixture.snapshot = {
+          ...nextFixture.snapshot,
+          threads: nextFixture.snapshot.threads.map((thread) => ({
+            ...thread,
+            session: thread.session
+              ? {
+                  ...thread.session,
+                  tokenUsage: {
+                    usedTokens: 99_000,
+                    maxTokens: 950_000,
+                  },
+                }
+              : thread.session,
+          })),
+        };
+      },
+    });
+
+    try {
+      await expect.element(page.getByText("90% left")).toBeInTheDocument();
+      await page.getByLabelText("Context window").hover();
+      await expect.element(page.getByText("10% used (90% left)")).toBeInTheDocument();
+      await expect.element(page.getByText("99k / 950k tokens used")).toBeInTheDocument();
+      await expect.element(page.getByText("851,000 tokens left")).toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+});
+
 describe("ChatView provider health banner", () => {
   it("hides non-blocking provider warnings when auth status is unknown", async () => {
     const mounted = await mountChatView({

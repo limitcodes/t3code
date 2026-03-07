@@ -846,6 +846,10 @@ const make = Effect.gen(function* () {
               : status === "ready"
               ? null
               : (thread.session?.lastError ?? null);
+        const tokenUsage =
+          event.type === "turn.completed"
+            ? (event.payload?.usage ?? thread.session?.tokenUsage ?? null)
+            : (thread.session?.tokenUsage ?? null);
 
         if (shouldApplyThreadLifecycle) {
           yield* orchestrationEngine.dispatch({
@@ -859,6 +863,7 @@ const make = Effect.gen(function* () {
               runtimeMode: thread.session?.runtimeMode ?? "full-access",
               activeTurnId: nextActiveTurnId,
               lastError,
+              tokenUsage,
               updatedAt: now,
             },
             createdAt: now,
@@ -1023,11 +1028,53 @@ const make = Effect.gen(function* () {
               runtimeMode: thread.session?.runtimeMode ?? "full-access",
               activeTurnId: eventTurnId ?? null,
               lastError: runtimeErrorMessage,
+              tokenUsage: thread.session?.tokenUsage ?? null,
               updatedAt: now,
             },
             createdAt: now,
           });
         }
+      }
+
+      if (
+        (event.type === "task.progress" || event.type === "task.completed") &&
+        event.payload.usage !== undefined
+      ) {
+        yield* orchestrationEngine.dispatch({
+          type: "thread.session.set",
+          commandId: providerCommandId(event, "thread-task-usage-set"),
+          threadId: thread.id,
+          session: {
+            threadId: thread.id,
+            status: thread.session?.status ?? "running",
+            providerName: thread.session?.providerName ?? event.provider,
+            runtimeMode: thread.session?.runtimeMode ?? "full-access",
+            activeTurnId: thread.session?.activeTurnId ?? eventTurnId ?? null,
+            lastError: thread.session?.lastError ?? null,
+            tokenUsage: event.payload.usage,
+            updatedAt: now,
+          },
+          createdAt: now,
+        });
+      }
+
+      if (event.type === "thread.token-usage.updated") {
+        yield* orchestrationEngine.dispatch({
+          type: "thread.session.set",
+          commandId: providerCommandId(event, "thread-token-usage-set"),
+          threadId: thread.id,
+          session: {
+            threadId: thread.id,
+            status: thread.session?.status ?? "ready",
+            providerName: thread.session?.providerName ?? event.provider,
+            runtimeMode: thread.session?.runtimeMode ?? "full-access",
+            activeTurnId: thread.session?.activeTurnId ?? null,
+            lastError: thread.session?.lastError ?? null,
+            tokenUsage: event.payload.usage,
+            updatedAt: now,
+          },
+          createdAt: now,
+        });
       }
 
       if (event.type === "thread.metadata.updated" && event.payload.name) {

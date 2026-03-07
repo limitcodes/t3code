@@ -147,4 +147,30 @@ describe("store read model sync", () => {
 
     expect(next.threads[0]?.model).toBe(DEFAULT_MODEL_BY_PROVIDER.codex);
   });
+
+  it("hydrates thread session token usage from the read model", () => {
+    const initialState = makeState(makeThread());
+    const tokenUsage = {
+      usedTokens: 99_000,
+      maxTokens: 950_000,
+    };
+    const readModel = makeReadModel(
+      makeReadModelThread({
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: DEFAULT_RUNTIME_MODE,
+          activeTurnId: null,
+          lastError: null,
+          tokenUsage,
+          updatedAt: "2026-02-27T00:00:01.000Z",
+        },
+      }),
+    );
+
+    const next = syncServerReadModel(initialState, readModel);
+
+    expect(next.threads[0]?.session?.tokenUsage).toEqual(tokenUsage);
+  });
 });
