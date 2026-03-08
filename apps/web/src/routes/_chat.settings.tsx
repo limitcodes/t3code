@@ -62,6 +62,22 @@ const MODEL_PROVIDER_SETTINGS: Array<{
   },
 ] as const;
 
+const VISIBLE_CUSTOM_THEME_PRESET_LABELS = CUSTOM_THEME_OPTIONS.filter(
+  (option) => option.id !== "none" && option.id !== "catppuccin-auto",
+).map((option) => option.label);
+
+function formatNaturalList(values: readonly string[]): string {
+  if (values.length <= 1) {
+    return values[0] ?? "";
+  }
+
+  if (values.length === 2) {
+    return `${values[0]} and ${values[1]}`;
+  }
+
+  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
+}
+
 function getCustomModelsForProvider(
   settings: ReturnType<typeof useAppSettings>["settings"],
   provider: ProviderKind,
@@ -338,7 +354,7 @@ function SettingsRouteView() {
                   <p className="mt-1">This preset overrides the base appearance while it is active.</p>
                 ) : null}
                 <p className="mt-1">
-                  Presets currently include Catppuccin, GitHub Dark, Nord, and Visual Studio 2017 Dark.
+                  Presets currently include {formatNaturalList(VISIBLE_CUSTOM_THEME_PRESET_LABELS)}.
                 </p>
               </div>
 

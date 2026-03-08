@@ -409,6 +409,43 @@
   --warning-foreground: #d7ba7d;
 }
 
+:root[data-theme="t3-chat-theme"] {
+  color-scheme: dark;
+  --background: #120d17;
+  --foreground: #f4e9f5;
+  --card: #18111f;
+  --card-foreground: #f4e9f5;
+  --popover: #201528;
+  --popover-foreground: #f4e9f5;
+  --primary: #d1056d;
+  --primary-foreground: #fff1f7;
+  --secondary: #261a30;
+  --secondary-foreground: #eadced;
+  --muted: #211626;
+  --muted-foreground: #baa6c0;
+  --accent: #38203e;
+  --accent-foreground: #f6ecf7;
+  --destructive: #ff5c8a;
+  --border: #4c2a46;
+  --input: #2c1c34;
+  --ring: #f1529c;
+  --destructive-foreground: #ffd6e2;
+  --info: #9b7cff;
+  --info-foreground: #cabbff;
+  --success: #49c487;
+  --success-foreground: #d7ffea;
+  --warning: #ffb454;
+  --warning-foreground: #fff0cf;
+}
+
+:root[data-theme="t3-chat-theme"] body {
+  background-image:
+    radial-gradient(circle at top, rgba(209, 5, 109, 0.18), transparent 34%),
+    radial-gradient(circle at 14% 0%, rgba(112, 63, 174, 0.16), transparent 24%),
+    linear-gradient(180deg, #17101d 0%, #120d17 38%, #0f0914 100%);
+  background-attachment: fixed;
+}
+
 body {
   font-family:
     "DM Sans",
