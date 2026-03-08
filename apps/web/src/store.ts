@@ -149,7 +149,12 @@ function toLegacySessionStatus(
 }
 
 function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === "codex" || providerName === "copilot" || providerName === "kimi") {
+  if (
+    providerName === "codex" ||
+    providerName === "copilot" ||
+    providerName === "kimi" ||
+    providerName === "droid"
+  ) {
     return providerName;
   }
   return "codex";
@@ -158,6 +163,7 @@ function toLegacyProvider(providerName: string | null): ProviderKind {
 const CODEX_MODEL_SLUGS = new Set<string>(getModelOptions("codex").map((option) => option.slug));
 const COPILOT_MODEL_SLUGS = new Set<string>(getModelOptions("copilot").map((option) => option.slug));
 const KIMI_MODEL_SLUGS = new Set<string>(getModelOptions("kimi").map((option) => option.slug));
+const DROID_MODEL_SLUGS = new Set<string>(getModelOptions("droid").map((option) => option.slug));
 
 function inferProviderForThreadModel(input: {
   readonly model: string;
@@ -166,7 +172,8 @@ function inferProviderForThreadModel(input: {
   if (
     input.sessionProviderName === "codex" ||
     input.sessionProviderName === "copilot" ||
-    input.sessionProviderName === "kimi"
+    input.sessionProviderName === "kimi" ||
+    input.sessionProviderName === "droid"
   ) {
     return input.sessionProviderName;
   }
@@ -181,6 +188,10 @@ function inferProviderForThreadModel(input: {
   const normalizedCodex = normalizeModelSlug(input.model, "codex");
   if (normalizedCodex && CODEX_MODEL_SLUGS.has(normalizedCodex)) {
     return "codex";
+  }
+  const normalizedDroid = normalizeModelSlug(input.model, "droid");
+  if (normalizedDroid && DROID_MODEL_SLUGS.has(normalizedDroid)) {
+    return "droid";
   }
   return "codex";
 }

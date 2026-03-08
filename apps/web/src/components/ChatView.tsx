@@ -165,6 +165,7 @@ import {
 import {
   ClaudeAI,
   CursorIcon,
+  DroidIcon,
   Gemini,
   GitHubIcon,
   KimiIcon,
@@ -282,6 +283,8 @@ function buildProviderOptionsForDispatch(input: {
     readonly copilotBinaryPath: string;
     readonly kimiBinaryPath: string;
     readonly kimiApiKey: string;
+    readonly droidBinaryPath: string;
+    readonly droidApiKey: string;
   };
 }): ProviderStartOptions | undefined {
   const codexBinaryPath = input.settings.codexBinaryPath.trim();
@@ -289,6 +292,8 @@ function buildProviderOptionsForDispatch(input: {
   const copilotBinaryPath = input.settings.copilotBinaryPath.trim();
   const kimiBinaryPath = input.settings.kimiBinaryPath.trim();
   const kimiApiKey = input.settings.kimiApiKey.trim();
+  const droidBinaryPath = input.settings.droidBinaryPath.trim();
+  const droidApiKey = input.settings.droidApiKey.trim();
 
   switch (input.provider) {
     case "codex":
@@ -317,6 +322,15 @@ function buildProviderOptionsForDispatch(input: {
             },
           }
         : undefined;
+    case "droid":
+      return droidBinaryPath || droidApiKey
+        ? {
+            droid: {
+              ...(droidBinaryPath ? { binaryPath: droidBinaryPath } : {}),
+              ...(droidApiKey ? { apiKey: droidApiKey } : {}),
+            },
+          }
+        : undefined;
     default:
       return undefined;
   }
@@ -328,6 +342,7 @@ function getCustomModelsForProvider(
     readonly customCodexModels: readonly string[];
     readonly customCopilotModels: readonly string[];
     readonly customKimiModels: readonly string[];
+    readonly customDroidModels: readonly string[];
   },
 ): readonly string[] {
   switch (provider) {
@@ -337,6 +352,8 @@ function getCustomModelsForProvider(
       return settings.customCopilotModels;
     case "kimi":
       return settings.customKimiModels;
+    case "droid":
+      return settings.customDroidModels;
     default:
       return settings.customCodexModels;
   }
@@ -976,6 +993,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
       kimi: deriveConfiguredModelOptionsFromActivityGroups(
         threads.map((thread) => thread.activities),
         "kimi",
+      ),
+      droid: deriveConfiguredModelOptionsFromActivityGroups(
+        threads.map((thread) => thread.activities),
+        "droid",
       ),
     }),
     [threads],
@@ -3340,9 +3361,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       scheduleComposerFocus,
       setComposerDraftModel,
       setComposerDraftProvider,
-      settings.customCodexModels,
-      settings.customCopilotModels,
-      settings.customKimiModels,
+      settings,
     ],
   );
   const onEffortSelect = useCallback(
@@ -5721,12 +5740,20 @@ function mergeModelOptions(
 
 function getCustomModelOptionsByProvider(
   settings: {
-  customCodexModels: readonly string[];
-  customCopilotModels: readonly string[];
-  customKimiModels: readonly string[];
+    customCodexModels: readonly string[];
+    customCopilotModels: readonly string[];
+    customKimiModels: readonly string[];
+    customDroidModels: readonly string[];
   },
   configuredModelsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>,
 ): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
+  const builtInAndCustomDroidOptions = getAppModelOptions("droid", settings.customDroidModels);
+  const savedCustomDroidOptions = builtInAndCustomDroidOptions.filter((option) => option.isCustom);
+  const preferredDroidOptions =
+    configuredModelsByProvider.droid.length > 0
+      ? mergeModelOptions(configuredModelsByProvider.droid, savedCustomDroidOptions)
+      : builtInAndCustomDroidOptions;
+
   return {
     codex: mergeModelOptions(
       getAppModelOptions("codex", settings.customCodexModels),
@@ -5740,6 +5767,7 @@ function getCustomModelOptionsByProvider(
       getAppModelOptions("kimi", settings.customKimiModels),
       configuredModelsByProvider.kimi,
     ),
+    droid: preferredDroidOptions,
   };
 }
 
@@ -5747,6 +5775,7 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   codex: OpenAI,
   copilot: GitHubIcon,
   kimi: KimiIcon,
+  droid: DroidIcon,
   claudeCode: ClaudeAI,
   cursor: CursorIcon,
 };

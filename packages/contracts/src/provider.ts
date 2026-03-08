@@ -62,10 +62,16 @@ const KimiProviderStartOptions = Schema.Struct({
   apiKey: Schema.optional(TrimmedNonEmptyStringSchema),
 });
 
+const DroidProviderStartOptions = Schema.Struct({
+  binaryPath: Schema.optional(TrimmedNonEmptyStringSchema),
+  apiKey: Schema.optional(TrimmedNonEmptyStringSchema),
+});
+
 const ProviderStartOptions = Schema.Struct({
   codex: Schema.optional(CodexProviderStartOptions),
   copilot: Schema.optional(CopilotProviderStartOptions),
   kimi: Schema.optional(KimiProviderStartOptions),
+  droid: Schema.optional(DroidProviderStartOptions),
 });
 
 export const ProviderSessionStartInput = Schema.Struct({

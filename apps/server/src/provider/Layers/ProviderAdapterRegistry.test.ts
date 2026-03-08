@@ -6,6 +6,7 @@ import { Effect, Layer, Stream } from "effect";
 
 import { CopilotAdapter, type CopilotAdapterShape } from "../Services/CopilotAdapter.ts";
 import { CodexAdapter, CodexAdapterShape } from "../Services/CodexAdapter.ts";
+import { DroidAdapter, type DroidAdapterShape } from "../Services/DroidAdapter.ts";
 import { KimiAdapter, type KimiAdapterShape } from "../Services/KimiAdapter.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
 import { ProviderAdapterRegistryLive } from "./ProviderAdapterRegistry.ts";
@@ -63,6 +64,23 @@ const fakeKimiAdapter: KimiAdapterShape = {
   streamEvents: Stream.empty,
 };
 
+const fakeDroidAdapter: DroidAdapterShape = {
+  provider: "droid",
+  capabilities: { sessionModelSwitch: "in-session" },
+  startSession: vi.fn(),
+  sendTurn: vi.fn(),
+  interruptTurn: vi.fn(),
+  respondToRequest: vi.fn(),
+  respondToUserInput: vi.fn(),
+  stopSession: vi.fn(),
+  listSessions: vi.fn(),
+  hasSession: vi.fn(),
+  readThread: vi.fn(),
+  rollbackThread: vi.fn(),
+  stopAll: vi.fn(),
+  streamEvents: Stream.empty,
+};
+
 const layer = it.layer(
   Layer.mergeAll(
     Layer.provide(
@@ -71,6 +89,7 @@ const layer = it.layer(
         Layer.succeed(CodexAdapter, fakeCodexAdapter),
         Layer.succeed(CopilotAdapter, fakeCopilotAdapter),
         Layer.succeed(KimiAdapter, fakeKimiAdapter),
+        Layer.succeed(DroidAdapter, fakeDroidAdapter),
       ),
     ),
     NodeServices.layer,
@@ -84,12 +103,14 @@ layer("ProviderAdapterRegistryLive", (it) => {
       const codex = yield* registry.getByProvider("codex");
       const copilot = yield* registry.getByProvider("copilot");
       const kimi = yield* registry.getByProvider("kimi");
+      const droid = yield* registry.getByProvider("droid");
       assert.equal(codex, fakeCodexAdapter);
       assert.equal(copilot, fakeCopilotAdapter);
       assert.equal(kimi, fakeKimiAdapter);
+      assert.equal(droid, fakeDroidAdapter);
 
       const providers = yield* registry.listProviders();
-      assert.deepEqual(providers, ["codex", "copilot", "kimi"]);
+      assert.deepEqual(providers, ["codex", "copilot", "kimi", "droid"]);
     }),
   );
 

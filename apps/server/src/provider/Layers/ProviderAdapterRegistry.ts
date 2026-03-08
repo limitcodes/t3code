@@ -17,6 +17,7 @@ import {
 } from "../Services/ProviderAdapterRegistry.ts";
 import { CopilotAdapter } from "../Services/CopilotAdapter.ts";
 import { CodexAdapter } from "../Services/CodexAdapter.ts";
+import { DroidAdapter } from "../Services/DroidAdapter.ts";
 import { KimiAdapter } from "../Services/KimiAdapter.ts";
 
 export interface ProviderAdapterRegistryLiveOptions {
@@ -28,7 +29,7 @@ const makeProviderAdapterRegistry = (options?: ProviderAdapterRegistryLiveOption
     const adapters =
       options?.adapters !== undefined
         ? options.adapters
-        : [yield* CodexAdapter, yield* CopilotAdapter, yield* KimiAdapter];
+        : [yield* CodexAdapter, yield* CopilotAdapter, yield* KimiAdapter, yield* DroidAdapter];
     const byProvider = new Map(adapters.map((adapter) => [adapter.provider, adapter]));
 
     const getByProvider: ProviderAdapterRegistryShape["getByProvider"] = (provider) => {

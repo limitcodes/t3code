@@ -144,7 +144,12 @@ export const NodePtyAdapterLive = Layer.effect(
 
     const nodePty = yield* Effect.try({
       try: () => requireForNodePty("node-pty") as NodePtyModuleLike,
-      catch: (cause) => cause,
+      catch: (cause) =>
+        new PtySpawnError({
+          adapter: "node-pty",
+          message: "Failed to load node-pty module.",
+          cause,
+        }),
     }).pipe(
       Effect.catch((cause) =>
         Effect.sync(() => {

@@ -238,9 +238,13 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           );
         }
 
-        yield* upsertSessionBinding(resumed, input.binding.threadId, {
-          ...(persistedProviderOptions ? { providerOptions: persistedProviderOptions } : {}),
-        });
+        yield* upsertSessionBinding(
+          resumed,
+          input.binding.threadId,
+          persistedProviderOptions === undefined
+            ? undefined
+            : { providerOptions: persistedProviderOptions },
+        );
         yield* analytics.record("provider.session.recovered", {
           provider: resumed.provider,
           strategy: "resume-thread",
@@ -301,9 +305,13 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           );
         }
 
-        yield* upsertSessionBinding(session, threadId, {
-          ...(input.providerOptions !== undefined ? { providerOptions: input.providerOptions } : {}),
-        });
+        yield* upsertSessionBinding(
+          session,
+          threadId,
+          input.providerOptions === undefined
+            ? undefined
+            : { providerOptions: input.providerOptions },
+        );
         yield* analytics.record("provider.session.started", {
           provider: session.provider,
           runtimeMode: input.runtimeMode,

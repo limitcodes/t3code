@@ -33,6 +33,7 @@ const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
   copilot: new Set(getModelOptions("copilot").map((option) => option.slug)),
   kimi: new Set(getModelOptions("kimi").map((option) => option.slug)),
+  droid: new Set(getModelOptions("droid").map((option) => option.slug)),
 };
 
 const AppSettingsSchema = Schema.Struct({
@@ -49,6 +50,12 @@ const AppSettingsSchema = Schema.Struct({
     Schema.withConstructorDefault(() => Option.some("")),
   ),
   kimiApiKey: Schema.String.check(Schema.isMaxLength(4096)).pipe(
+    Schema.withConstructorDefault(() => Option.some("")),
+  ),
+  droidBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
+    Schema.withConstructorDefault(() => Option.some("")),
+  ),
+  droidApiKey: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     Schema.withConstructorDefault(() => Option.some("")),
   ),
   enableCatppuccinTheme: Schema.Boolean.pipe(
@@ -69,6 +76,9 @@ const AppSettingsSchema = Schema.Struct({
     Schema.withConstructorDefault(() => Option.some([])),
   ),
   customKimiModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  customDroidModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
 });
@@ -143,6 +153,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customCodexModels: normalizeCustomModelSlugs(settings.customCodexModels, "codex"),
     customCopilotModels: normalizeCustomModelSlugs(settings.customCopilotModels, "copilot"),
     customKimiModels: normalizeCustomModelSlugs(settings.customKimiModels, "kimi"),
+    customDroidModels: normalizeCustomModelSlugs(settings.customDroidModels, "droid"),
   };
 }
 

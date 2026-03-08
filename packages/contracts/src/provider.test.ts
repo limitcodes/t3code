@@ -72,6 +72,27 @@ describe("ProviderSessionStartInput", () => {
     expect(parsed.providerOptions?.kimi?.binaryPath).toBe("/usr/local/bin/kimi");
   });
 
+  it("accepts droid-compatible payloads", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "droid",
+      cwd: "/tmp/workspace",
+      model: "claude-opus-4-6",
+      runtimeMode: "approval-required",
+      providerOptions: {
+        droid: {
+          binaryPath: "/usr/local/bin/droid",
+          apiKey: "fk-test",
+        },
+      },
+    });
+
+    expect(parsed.provider).toBe("droid");
+    expect(parsed.model).toBe("claude-opus-4-6");
+    expect(parsed.providerOptions?.droid?.binaryPath).toBe("/usr/local/bin/droid");
+    expect(parsed.providerOptions?.droid?.apiKey).toBe("fk-test");
+  });
+
   it("rejects payloads without runtime mode", () => {
     expect(() =>
       decodeProviderSessionStartInput({

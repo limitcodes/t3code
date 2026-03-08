@@ -63,6 +63,19 @@ describe("getAppModelOptions", () => {
     });
   });
 
+  it("supports droid model catalogs and custom entries", () => {
+    const options = getAppModelOptions("droid", ["custom/droid-model"]);
+
+    expect(options.some((option) => option.slug === "claude-opus-4-6")).toBe(true);
+    expect(options.some((option) => option.slug === "gpt-5.4")).toBe(true);
+    expect(options.some((option) => option.slug === "glm-5")).toBe(true);
+    expect(options.at(-1)).toEqual({
+      slug: "custom/droid-model",
+      name: "custom/droid-model",
+      isCustom: true,
+    });
+  });
+
   it("keeps the currently selected custom model available even if it is no longer saved", () => {
     const options = getAppModelOptions("codex", [], "custom/selected-model");
 
@@ -85,6 +98,7 @@ describe("resolveAppModelSelection", () => {
     expect(resolveAppModelSelection("codex", [], "")).toBe("gpt-5.4");
     expect(resolveAppModelSelection("copilot", [], "")).toBe("claude-sonnet-4.5");
     expect(resolveAppModelSelection("kimi", [], "")).toBe("kimi-for-coding");
+    expect(resolveAppModelSelection("droid", [], "")).toBe("claude-opus-4-6");
   });
 });
 

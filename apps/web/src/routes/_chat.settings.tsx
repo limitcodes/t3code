@@ -75,6 +75,13 @@ const MODEL_PROVIDER_SETTINGS: Array<{
     placeholder: "your-kimi-model-id",
     example: "kimi-for-coding",
   },
+  {
+    provider: "droid",
+    title: "Droid",
+    description: "Save additional Droid model ids for the picker and `/model` command.",
+    placeholder: "your-droid-model-id",
+    example: "claude-opus-4-6",
+  },
 ] as const;
 
 function getCustomModelsForProvider(
@@ -88,6 +95,8 @@ function getCustomModelsForProvider(
       return settings.customCopilotModels;
     case "kimi":
       return settings.customKimiModels;
+    case "droid":
+      return settings.customDroidModels;
     default:
       return settings.customCodexModels;
   }
@@ -104,6 +113,8 @@ function getDefaultCustomModelsForProvider(
       return defaults.customCopilotModels;
     case "kimi":
       return defaults.customKimiModels;
+    case "droid":
+      return defaults.customDroidModels;
     default:
       return defaults.customCodexModels;
   }
@@ -117,6 +128,8 @@ function patchCustomModels(provider: ProviderKind, models: string[]) {
       return { customCopilotModels: models };
     case "kimi":
       return { customKimiModels: models };
+    case "droid":
+      return { customDroidModels: models };
     default:
       return { customCodexModels: models };
   }
@@ -142,6 +155,7 @@ function SettingsRouteView() {
     codex: "",
     copilot: "",
     kimi: "",
+    droid: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
@@ -152,6 +166,8 @@ function SettingsRouteView() {
   const copilotBinaryPath = settings.copilotBinaryPath;
   const kimiBinaryPath = settings.kimiBinaryPath;
   const kimiApiKey = settings.kimiApiKey;
+  const droidBinaryPath = settings.droidBinaryPath;
+  const droidApiKey = settings.droidApiKey;
   const codexServiceTier = settings.codexServiceTier;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const selectedCustomTheme = CUSTOM_THEME_OPTIONS_BY_ID[customThemeId];
@@ -555,6 +571,68 @@ function SettingsRouteView() {
                     }
                   >
                     Reset kimi overrides
+                  </Button>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">Droid CLI</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  These overrides apply to new Droid sessions. Install with{" "}
+                  <code>curl -fsSL https://app.factory.ai/cli | sh</code> and add a Factory API key
+                  if you want T3 Code to authenticate Droid non-interactively.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <label htmlFor="droid-binary-path" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">Droid binary path</span>
+                  <Input
+                    id="droid-binary-path"
+                    value={droidBinaryPath}
+                    onChange={(event) => updateSettings({ droidBinaryPath: event.target.value })}
+                    placeholder="droid"
+                    spellCheck={false}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Leave blank to use <code>droid</code> from your PATH.
+                  </span>
+                </label>
+
+                <label htmlFor="droid-api-key" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">Factory API key</span>
+                  <Input
+                    id="droid-api-key"
+                    type="password"
+                    value={droidApiKey}
+                    onChange={(event) => updateSettings({ droidApiKey: event.target.value })}
+                    placeholder="fk-..."
+                    autoComplete="new-password"
+                    spellCheck={false}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Optional. T3 Code stores it locally on this device and injects it into new
+                    Droid sessions as <code>FACTORY_API_KEY</code>.
+                  </span>
+                </label>
+
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <p>
+                    Binary source: <span className="font-medium text-foreground">{droidBinaryPath || "PATH"}</span>
+                  </p>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() =>
+                      updateSettings({
+                        droidBinaryPath: defaults.droidBinaryPath,
+                        droidApiKey: defaults.droidApiKey,
+                      })
+                    }
+                  >
+                    Reset droid overrides
                   </Button>
                 </div>
               </div>

@@ -49,6 +49,28 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "gpt-4.1", name: "GPT-4.1" },
   ],
   kimi: [{ slug: "kimi-for-coding", name: "Kimi for Coding" }],
+  droid: [
+    { slug: "claude-opus-4-6", name: "Claude Opus 4.6" },
+    { slug: "claude-opus-4-6-fast", name: "Claude Opus 4.6 Fast Mode" },
+    { slug: "claude-opus-4-5-20251101", name: "Claude Opus 4.5" },
+    { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+    { slug: "claude-sonnet-4-5-20250929", name: "Claude Sonnet 4.5" },
+    { slug: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5" },
+    { slug: "gpt-5.4", name: "GPT-5.4" },
+    { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
+    { slug: "gpt-5.2-codex", name: "GPT-5.2 Codex" },
+    { slug: "gpt-5.2", name: "GPT-5.2" },
+    { slug: "gpt-5.1-codex-max", name: "GPT-5.1 Codex Max" },
+    { slug: "gpt-5.1-codex", name: "GPT-5.1 Codex" },
+    { slug: "gpt-5.1", name: "GPT-5.1" },
+    { slug: "gemini-3-pro-preview", name: "Gemini 3 Pro Preview" },
+    { slug: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview" },
+    { slug: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview" },
+    { slug: "glm-4.7", name: "Droid Core (GLM-4.7)" },
+    { slug: "glm-5", name: "Droid Core (GLM-5)" },
+    { slug: "kimi-k2.5", name: "Droid Core (Kimi K2.5)" },
+    { slug: "minimax-m2.5", name: "Droid Core (MiniMax M2.5)" },
+  ],
 } as const satisfies Record<ProviderKind, readonly ModelOption[]>;
 export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
 
@@ -59,6 +81,7 @@ export const DEFAULT_MODEL_BY_PROVIDER = {
   codex: "gpt-5.4",
   copilot: "claude-sonnet-4.5",
   kimi: "kimi-for-coding",
+  droid: "claude-opus-4-6",
 } as const satisfies Record<ProviderKind, ModelSlug>;
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
@@ -71,16 +94,19 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
   },
   copilot: {},
   kimi: {},
+  droid: {},
 } as const satisfies Record<ProviderKind, Record<string, ModelSlug>>;
 
 export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
   codex: CODEX_REASONING_EFFORT_OPTIONS,
   copilot: [],
   kimi: [],
+  droid: [],
 } as const satisfies Record<ProviderKind, readonly CodexReasoningEffort[]>;
 
 export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
   codex: "high",
   copilot: null,
   kimi: null,
+  droid: null,
 } as const satisfies Record<ProviderKind, CodexReasoningEffort | null>;

@@ -757,6 +757,7 @@ describe("PROVIDER_OPTIONS", () => {
       { value: "codex", label: "Codex", available: true },
       { value: "copilot", label: "GitHub Copilot", available: true },
       { value: "kimi", label: "Kimi Code", available: true },
+      { value: "droid", label: "Droid", available: true },
       { value: "claudeCode", label: "Claude Code", available: false },
       { value: "cursor", label: "Cursor", available: false },
     ]);

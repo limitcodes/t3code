@@ -22,6 +22,7 @@ const DEFAULT_TIMEOUT_MS = 4_000;
 const CODEX_PROVIDER = "codex" as const;
 const COPILOT_PROVIDER = "copilot" as const;
 const KIMI_PROVIDER = "kimi" as const;
+const DROID_PROVIDER = "droid" as const;
 
 // ── Pure helpers ────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ function isCommandMissingCause(error: unknown): boolean {
       lower.includes("spawn codex enoent") ||
       lower.includes("spawn copilot enoent") ||
       lower.includes("spawn kimi enoent") ||
+      lower.includes("spawn droid enoent") ||
       lower.includes("enoent") ||
       lower.includes("notfound")
     );
@@ -199,6 +201,7 @@ const runCliCommand = (commandName: string, args: ReadonlyArray<string>) =>
 const runCodexCommand = (args: ReadonlyArray<string>) => runCliCommand("codex", args);
 const runCopilotCommand = (args: ReadonlyArray<string>) => runCliCommand("copilot", args);
 const runKimiCommand = (args: ReadonlyArray<string>) => runCliCommand("kimi", args);
+const runDroidCommand = (args: ReadonlyArray<string>) => runCliCommand("droid", args);
 
 // ── Health check ────────────────────────────────────────────────────
 
@@ -459,6 +462,85 @@ export const checkKimiProviderStatus: Effect.Effect<
   };
 });
 
+function readDroidAuthEnvValue(): string | undefined {
+  const value = process.env.FACTORY_API_KEY?.trim();
+  return value && value.length > 0 ? value : undefined;
+}
+
+export const checkDroidProviderStatus: Effect.Effect<
+  ServerProviderStatus,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> = Effect.gen(function* () {
+  const checkedAt = new Date().toISOString();
+
+  const versionProbe = yield* runDroidCommand(["--version"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(versionProbe)) {
+    const error = versionProbe.failure;
+    return {
+      provider: DROID_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: isCommandMissingCause(error)
+        ? "Factory Droid CLI (`droid`) is not installed or not on PATH."
+        : `Failed to execute Factory Droid CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+    };
+  }
+
+  if (Option.isNone(versionProbe.success)) {
+    return {
+      provider: DROID_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "Factory Droid CLI is installed but failed to run. Timed out while running command.",
+    };
+  }
+
+  const version = versionProbe.success.value;
+  if (version.code !== 0) {
+    const detail = detailFromResult(version);
+    return {
+      provider: DROID_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: detail
+        ? `Factory Droid CLI is installed but failed to run. ${detail}`
+        : "Factory Droid CLI is installed but failed to run.",
+    };
+  }
+
+  if (readDroidAuthEnvValue()) {
+    return {
+      provider: DROID_PROVIDER,
+      status: "ready" as const,
+      available: true,
+      authStatus: "authenticated" as const,
+      checkedAt,
+      message: "Factory Droid authentication is configured via FACTORY_API_KEY.",
+    };
+  }
+
+  return {
+    provider: DROID_PROVIDER,
+    status: "warning" as const,
+    available: true,
+    authStatus: "unknown" as const,
+    checkedAt,
+    message:
+      "Could not verify Factory Droid authentication non-interactively. Use `/login` in `droid` or set FACTORY_API_KEY if session start fails.",
+  };
+});
+
 // ── Layer ───────────────────────────────────────────────────────────
 
 export const ProviderHealthLive = Layer.effect(
@@ -467,8 +549,9 @@ export const ProviderHealthLive = Layer.effect(
     const codexStatus = yield* checkCodexProviderStatus;
     const copilotStatus = yield* checkCopilotProviderStatus;
     const kimiStatus = yield* checkKimiProviderStatus;
+    const droidStatus = yield* checkDroidProviderStatus;
     return {
-      getStatuses: Effect.succeed([codexStatus, copilotStatus, kimiStatus]),
+      getStatuses: Effect.succeed([codexStatus, copilotStatus, kimiStatus, droidStatus]),
     } satisfies ProviderHealthShape;
   }),
 );

@@ -243,7 +243,8 @@ const make = Effect.gen(function* () {
     const currentProvider: ProviderKind | undefined =
       thread.session?.providerName === "codex" ||
       thread.session?.providerName === "copilot" ||
-      thread.session?.providerName === "kimi"
+      thread.session?.providerName === "kimi" ||
+      thread.session?.providerName === "droid"
         ? thread.session.providerName
         : undefined;
     const preferredProvider: ProviderKind | undefined = options?.provider ?? currentProvider;
@@ -545,7 +546,8 @@ const make = Effect.gen(function* () {
           const sessionProvider =
             thread.session?.providerName === "codex" ||
             thread.session?.providerName === "copilot" ||
-            thread.session?.providerName === "kimi"
+            thread.session?.providerName === "kimi" ||
+            thread.session?.providerName === "droid"
               ? thread.session.providerName
               : null;
           const provider = event.payload.provider ?? sessionProvider;

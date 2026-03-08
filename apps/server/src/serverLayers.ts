@@ -20,6 +20,7 @@ import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRun
 import { ProviderUnsupportedError } from "./provider/Errors";
 import { makeCopilotAdapterLive } from "./provider/Layers/CopilotAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
+import { makeDroidAdapterLive } from "./provider/Layers/DroidAdapter";
 import { makeKimiAdapterLive } from "./provider/Layers/KimiAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
@@ -61,10 +62,12 @@ export function makeServerProviderLayer(): Layer.Layer<
     );
     const copilotAdapterLayer = makeCopilotAdapterLive();
     const kimiAdapterLayer = makeKimiAdapterLive();
+    const droidAdapterLayer = makeDroidAdapterLive();
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(copilotAdapterLayer),
       Layer.provide(kimiAdapterLayer),
+      Layer.provide(droidAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
     return makeProviderServiceLive(

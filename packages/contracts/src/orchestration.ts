@@ -27,7 +27,7 @@ export const ORCHESTRATION_WS_CHANNELS = {
   domainEvent: "orchestration.domainEvent",
 } as const;
 
-export const ProviderKind = Schema.Literals(["codex", "copilot", "kimi"]);
+export const ProviderKind = Schema.Literals(["codex", "copilot", "kimi", "droid"]);
 export type ProviderKind = typeof ProviderKind.Type;
 export const ProviderApprovalPolicy = Schema.Literals([
   "untrusted",
@@ -79,10 +79,16 @@ const KimiProviderStartOptions = Schema.Struct({
   apiKey: Schema.optional(TrimmedNonEmptyString),
 });
 
+const DroidProviderStartOptions = Schema.Struct({
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+  apiKey: Schema.optional(TrimmedNonEmptyString),
+});
+
 export const ProviderStartOptions = Schema.Struct({
   codex: Schema.optional(CodexProviderStartOptions),
   copilot: Schema.optional(CopilotProviderStartOptions),
   kimi: Schema.optional(KimiProviderStartOptions),
+  droid: Schema.optional(DroidProviderStartOptions),
 });
 export type ProviderStartOptions = typeof ProviderStartOptions.Type;
 
