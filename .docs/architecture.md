@@ -1,21 +1,35 @@
 # Architecture
 
-T3 Code runs as a **Node.js WebSocket server** that wraps `codex app-server` (JSON-RPC over stdio) and serves a React web app.
+T3 Code ships as a shared web app plus an optional Electron desktop shell, backed by a Node.js server that exposes HTTP/WebSocket APIs and routes work to provider-specific runtimes.
 
 ```
-┌─────────────────────────────────┐
-│  Browser (React + Vite)         │
-│  Connected via WebSocket        │
-└──────────┬──────────────────────┘
-           │ ws://localhost:3773
-┌──────────▼──────────────────────┐
-│  apps/server (Node.js)          │
-│  WebSocket + HTTP static server │
-│  ProviderManager                │
-│  CodexAppServerManager          │
-└──────────┬──────────────────────┘
-           │ JSON-RPC over stdio
-┌──────────▼──────────────────────┐
-│  codex app-server               │
-└─────────────────────────────────┘
+┌──────────────────────────────┐
+│ Browser                      │
+│ or Electron desktop shell    │
+└──────────────┬───────────────┘
+            │ loads shared UI
+┌──────────────▼───────────────┐
+│ apps/web (React + Vite)      │
+│ session UI, settings, plans  │
+└──────────────┬───────────────┘
+            │ HTTP + WebSocket
+┌──────────────▼───────────────────────────────────┐
+│ apps/server (Node.js)                            │
+│ static hosting, ws transport, orchestration,     │
+│ project/git/terminal APIs, ProviderService       │
+└──────────────┬───────────────────────────────────┘
+            │ provider adapters / managers
+    ┌─────────┼─────────┐
+    │         │         │
+┌────▼────┐ ┌──▼──────┐ ┌▼────────┐
+│ Codex   │ │ Copilot │ │ Kimi    │
+│ app-    │ │ ACP     │ │ ACP     │
+│ server  │ │ runtime │ │ runtime │
+└─────────┘ └─────────┘ └─────────┘
 ```
+
+- `apps/web` is the shared client surface for browser and desktop usage.
+- `apps/desktop` starts a desktop-scoped `t3` backend, hosts the shared UI in Electron, and exposes native dialogs, menus, and updater flows.
+- `apps/server` serves the built UI, validates WebSocket requests, owns orchestration, and routes provider-native work through the provider layer.
+- Codex uses `codex app-server` over JSON-RPC stdio.
+- GitHub Copilot and Kimi Code use ACP-backed runtime managers.

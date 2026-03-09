@@ -15,8 +15,11 @@ The T3 Code CLI accepts the following configuration options, available either as
 | `--dev-url <url>`       | `VITE_DEV_SERVER_URL` | Dev web URL redirect/proxy target. |
 | `--no-browser`          | `T3CODE_NO_BROWSER`   | Disable auto-open browser.         |
 | `--auth-token <token>`  | `T3CODE_AUTH_TOKEN`   | WebSocket auth token.              |
+| `--auto-bootstrap-project-from-cwd` | `T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD` | Create a project for the current working directory on startup when missing. |
+| `--log-websocket-events` | `T3CODE_LOG_WS_EVENTS` | Emit server-side logs for outbound WebSocket push traffic. |
 
-> TIP: Use the `--help` flag to see all available options and their descriptions.
+> TIP: `--auth-token` also has a `--token` alias, and `--log-websocket-events` also has a `--log-ws-events` alias.
+> Use the `--help` flag to see all available options and their descriptions.
 
 ## Security First
 

@@ -1,4 +1,4 @@
-# AGENTS.md
+# CLAUDE.md
 
 ## Task Completion Requirements
 
@@ -7,7 +7,7 @@
 
 ## Project Snapshot
 
-T3 Code is a minimal web GUI for using code agents like Codex and Claude Code (coming soon).
+T3 Code is a minimal web GUI for using coding agents. It currently supports Codex, GitHub Copilot, and Kimi Code, with unavailable picker placeholders for Claude Code and Cursor.
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 
@@ -30,6 +30,7 @@ Priorities:
 Architecture:
 - apps/server: provider sessions, orchestration, websocket server
 - apps/web: React/Vite UI and session UX
+- apps/desktop: Electron shell and desktop-native integrations
 - packages/contracts: schemas/contracts only
 - packages/shared: shared runtime utilities
 Do not make schema-only packages carry runtime logic.
@@ -82,21 +83,24 @@ Long term maintainability is a core priority. If you add new functionality, firs
 
 ## Package Roles
 
-- `apps/server`: Node.js WebSocket server. Wraps Codex app-server (JSON-RPC over stdio), serves the React web app, and manages provider sessions.
-- `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state. Connects to the server via WebSocket.
-- `packages/contracts`: Shared effect/Schema schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types. Keep this package schema-only — no runtime logic.
+- `apps/server`: Node.js HTTP/WebSocket server. Serves the React web app, owns orchestration/project/git/terminal APIs, and routes provider sessions for Codex, GitHub Copilot, and Kimi Code.
+- `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, composer/settings controls, plan sidebar flows, and client-side state. Connects to the server via WebSocket.
+- `apps/desktop`: Electron shell. Starts a desktop-scoped `t3` backend, loads the shared web app, and exposes native dialogs, menus, and desktop update flows.
+- `packages/contracts`: Shared Effect Schema schemas and TypeScript contracts for provider events, WebSocket protocol, keybindings, and model/session types. Keep this package schema-only — no runtime logic.
 - `packages/shared`: Shared runtime utilities consumed by both server and web. Uses explicit subpath exports (e.g. `@t3tools/shared/git`) — no barrel index.
 
-## Codex App Server (Important)
+## Provider Runtimes (Important)
 
-T3 Code is currently Codex-first. The server starts `codex app-server` (JSON-RPC over stdio) per provider session, then streams structured events to the browser through WebSocket push messages.
+T3 Code exposes one orchestration/WebSocket surface, then delegates provider-native runtime behavior to provider adapters and managers.
 
 How we use it in this codebase:
 
-- Session startup/resume and turn lifecycle are brokered in `apps/server/src/codexAppServerManager.ts`.
-- Provider dispatch and thread event logging are coordinated in `apps/server/src/providerManager.ts`.
-- WebSocket server routes NativeApi methods in `apps/server/src/wsServer.ts`.
-- Web app consumes orchestration domain events via WebSocket push on channel `orchestration.domainEvent` (provider runtime activity is projected into orchestration events server-side).
+- Codex sessions are brokered through `codex app-server` (JSON-RPC over stdio) in `apps/server/src/codexAppServerManager.ts`.
+- GitHub Copilot sessions are brokered through ACP-backed runtime management in `apps/server/src/copilotAcpManager.ts`.
+- Kimi Code sessions are brokered through ACP-backed runtime management in `apps/server/src/kimiAcpManager.ts`, including optional API-key-backed startup.
+- Cross-provider routing and shared runtime event fan-out are coordinated in `apps/server/src/provider/Layers/ProviderService.ts`.
+- WebSocket request handling and push channels are served from `apps/server/src/wsServer.ts`.
+- The web app consumes orchestration domain events plus terminal/server push channels over WebSocket.
 
 Docs:
 
