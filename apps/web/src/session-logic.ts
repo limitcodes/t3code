@@ -53,6 +53,17 @@ export interface ConfiguredModelOption {
   name: string;
 }
 
+export interface ConfiguredDroidModeOption {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface ConfiguredDroidModeState {
+  currentModeId: string | null;
+  availableModes: ConfiguredDroidModeOption[];
+}
+
 export interface ActivePlanState {
   createdAt: string;
   turnId: TurnId | null;
@@ -386,6 +397,80 @@ export function deriveConfiguredModelOptionsFromActivityGroups(
   }
 
   return [];
+}
+
+export function deriveConfiguredDroidModeStateFromActivityGroups(
+  activityGroups: ReadonlyArray<ReadonlyArray<OrchestrationThreadActivity>>,
+): ConfiguredDroidModeState | null {
+  const ordered = activityGroups
+    .flatMap((activities) => activities)
+    .toSorted(compareActivitiesByOrder)
+    .toReversed();
+
+  for (const activity of ordered) {
+    if (activity.kind !== "session.configured") {
+      continue;
+    }
+
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const payloadProvider = typeof payload?.provider === "string" ? payload.provider : null;
+    if (payloadProvider !== null && payloadProvider !== "droid") {
+      continue;
+    }
+
+    const config =
+      payload?.config && typeof payload.config === "object"
+        ? (payload.config as Record<string, unknown>)
+        : null;
+    if (!config) {
+      continue;
+    }
+
+    const availableModes = Array.isArray(config.availableModes) ? config.availableModes : [];
+    const seen = new Set<string>();
+    const options: ConfiguredDroidModeOption[] = [];
+
+    for (const entry of availableModes) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const candidate = entry as Record<string, unknown>;
+      if (typeof candidate.id !== "string" || candidate.id.trim().length === 0) {
+        continue;
+      }
+      const id = candidate.id.trim();
+      if (seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+      options.push({
+        id,
+        name:
+          typeof candidate.name === "string" && candidate.name.trim().length > 0
+            ? candidate.name.trim()
+            : id,
+        description:
+          typeof candidate.description === "string" && candidate.description.trim().length > 0
+            ? candidate.description.trim()
+            : null,
+      });
+    }
+
+    const currentModeId =
+      typeof config.currentModeId === "string" && config.currentModeId.trim().length > 0
+        ? config.currentModeId.trim()
+        : null;
+
+    return {
+      currentModeId,
+      availableModes: options,
+    };
+  }
+
+  return null;
 }
 
 export function deriveActivePlanState(

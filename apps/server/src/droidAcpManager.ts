@@ -91,6 +91,33 @@ function toMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function extractErrorText(error: unknown, seen = new Set<unknown>()): string[] {
+  if (error === null || error === undefined || seen.has(error)) {
+    return [];
+  }
+  if (typeof error === "string") {
+    return error.trim().length > 0 ? [error.trim()] : [];
+  }
+  if (error instanceof Error) {
+    seen.add(error);
+    return [
+      ...(error.message.trim().length > 0 ? [error.message.trim()] : []),
+      ...extractErrorText((error as Error & { cause?: unknown }).cause, seen),
+    ];
+  }
+  if (typeof error === "object") {
+    seen.add(error);
+    const record = error as Record<string, unknown>;
+    return [
+      ...extractErrorText(record.message, seen),
+      ...extractErrorText(record.data, seen),
+      ...extractErrorText(record.detail, seen),
+      ...extractErrorText(record.cause, seen),
+    ];
+  }
+  return [];
+}
+
 export function readAvailableDroidModelIds(
   models: acp.SessionModelState | null | undefined,
 ): ReadonlyArray<string> {
@@ -117,6 +144,11 @@ function mapDroidRuntimeMode(
   return runtimeMode === "full-access" ? "auto-high" : "normal";
 }
 
+function normalizeDroidModeId(modeId: string | undefined): string | undefined {
+  const normalized = modeId?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
 export function buildDroidCliArgs(): ReadonlyArray<string> {
   return ["exec", "--output-format", "acp"];
 }
@@ -131,6 +163,21 @@ export function normalizeDroidStartErrorMessage(rawMessage: string): string {
   }
 
   return rawMessage;
+}
+
+export function normalizeDroidRuntimeErrorMessage(rawMessage: string): string {
+  if (
+    /payment required|settings\/billing|"status"\s*:\s*402|^402\b/i.test(rawMessage)
+  ) {
+    return "Factory Droid rejected this request because the selected mode or model requires Factory billing for the current account.";
+  }
+
+  if (/<!doctype html>|<html\b|<title>\s*blocked\s*<\/title>|^403\b/i.test(rawMessage)) {
+    return "Factory Droid rejected this request with an upstream 403 block page.";
+  }
+
+  const compact = rawMessage.replace(/\s+/gu, " ").trim();
+  return compact.length > 0 ? compact : "Factory Droid turn failed.";
 }
 
 const DROID_ACP_INITIALIZE_TIMEOUT_MS = 10_000;
@@ -712,8 +759,7 @@ export class DroidAcpManager extends EventEmitter<DroidAcpManagerEvents> {
     }
   }
 
-  private async setSessionMode(context: DroidSessionContext, runtimeMode: ProviderSession["runtimeMode"]) {
-    const modeId = mapDroidRuntimeMode(runtimeMode);
+  private async setSessionModeId(context: DroidSessionContext, modeId: string) {
     const currentModeId = context.modes?.currentModeId ?? null;
     if (currentModeId === modeId) {
       return;
@@ -736,6 +782,13 @@ export class DroidAcpManager extends EventEmitter<DroidAcpManagerEvents> {
         { cause: error },
       );
     }
+  }
+
+  private async setSessionMode(
+    context: DroidSessionContext,
+    runtimeMode: ProviderSession["runtimeMode"],
+  ) {
+    await this.setSessionModeId(context, mapDroidRuntimeMode(runtimeMode));
   }
 
   async startSession(input: DroidAppServerStartSessionInput): Promise<ProviderSession> {
@@ -888,6 +941,7 @@ export class DroidAcpManager extends EventEmitter<DroidAcpManagerEvents> {
     readonly input?: string;
     readonly attachments?: ReadonlyArray<unknown>;
     readonly model?: string;
+    readonly modeId?: string;
   }): Promise<ProviderTurnStartResult> {
     const context = this.requireSession(input.threadId);
     const promptText = input.input?.trim();
@@ -903,6 +957,11 @@ export class DroidAcpManager extends EventEmitter<DroidAcpManagerEvents> {
       if (isDroidModelAvailable(context.models, requestedModel)) {
         await this.setSessionModel(context, requestedModel);
       }
+    }
+
+    const requestedModeId = normalizeDroidModeId(input.modeId);
+    if (requestedModeId) {
+      await this.setSessionModeId(context, requestedModeId);
     }
 
     const turnId = TurnId.makeUnsafe(randomUUID());
@@ -952,7 +1011,10 @@ export class DroidAcpManager extends EventEmitter<DroidAcpManagerEvents> {
         resumeCursor: { sessionId: context.acpSessionId },
       };
     } catch (error) {
-      const message = toMessage(error, "Factory Droid turn failed.");
+      const rawMessage =
+        extractErrorText(error).find((entry) => entry.length > 0) ??
+        toMessage(error, "Factory Droid turn failed.");
+      const message = normalizeDroidRuntimeErrorMessage(rawMessage);
       this.emitRuntimeEvent({
         ...this.createEventBase(context),
         turnId,

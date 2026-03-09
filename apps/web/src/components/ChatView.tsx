@@ -5,6 +5,7 @@ import {
   type EditorId,
   type KeybindingCommand,
   type CodexReasoningEffort,
+  type DroidModelOptions,
   type MessageId,
   type ProjectId,
   type ProjectEntry,
@@ -63,6 +64,7 @@ import {
   replaceTextRange,
 } from "../composer-logic";
 import {
+  deriveConfiguredDroidModeStateFromActivityGroups,
   deriveConfiguredModelOptionsFromActivityGroups,
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -710,6 +712,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     (store) => store.setInteractionMode,
   );
   const setComposerDraftEffort = useComposerDraftStore((store) => store.setEffort);
+  const setComposerDraftDroidMode = useComposerDraftStore((store) => store.setDroidMode);
   const setComposerDraftCodexFastMode = useComposerDraftStore((store) => store.setCodexFastMode);
   const addComposerDraftImage = useComposerDraftStore((store) => store.addImage);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
@@ -1001,6 +1004,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }),
     [threads],
   );
+  const configuredDroidModeState = useMemo(
+    () => deriveConfiguredDroidModeStateFromActivityGroups(threads.map((thread) => thread.activities)),
+    [threads],
+  );
   const modelOptionsByProvider = useMemo(
     () => getCustomModelOptionsByProvider(settings, configuredModelOptionsByProvider),
     [configuredModelOptionsByProvider, settings],
@@ -1030,16 +1037,68 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const selectedEffort = composerDraft.effort ?? getDefaultReasoningEffort(selectedProvider);
   const selectedCodexFastModeEnabled =
     selectedProvider === "codex" ? composerDraft.codexFastMode : false;
-  const selectedModelOptionsForDispatch = useMemo(() => {
-    if (selectedProvider !== "codex") {
-      return undefined;
+  const fallbackDroidModes = useMemo<
+    ReadonlyArray<{ id: string; name: string; description?: string | null }>
+  >(
+    () => [
+      { id: "normal", name: "Auto (Off)", description: "Auto-approves only read operations" },
+      { id: "spec", name: "Spec", description: "Build feature specs (read-only)" },
+      {
+        id: "auto-low",
+        name: "Auto (Low)",
+        description: "Auto-approves file edits and low-risk actions during the session",
+      },
+      {
+        id: "auto-medium",
+        name: "Auto (Medium)",
+        description: "Auto-approves medium-risk actions during the session",
+      },
+      { id: "auto-high", name: "Auto (High)", description: "Auto-approves all actions" },
+    ],
+    [],
+  );
+  const availableDroidModes = useMemo(
+    () =>
+      configuredDroidModeState?.availableModes.length
+        ? configuredDroidModeState.availableModes
+        : fallbackDroidModes,
+    [configuredDroidModeState?.availableModes, fallbackDroidModes],
+  );
+  const selectedDroidModeId = useMemo(() => {
+    if (selectedProvider !== "droid") {
+      return null;
     }
-    const codexOptions = {
-      ...(supportsReasoningEffort && selectedEffort ? { reasoningEffort: selectedEffort } : {}),
-      ...(selectedCodexFastModeEnabled ? { fastMode: true } : {}),
-    };
-    return Object.keys(codexOptions).length > 0 ? { codex: codexOptions } : undefined;
-  }, [selectedCodexFastModeEnabled, selectedEffort, selectedProvider, supportsReasoningEffort]);
+    if (composerDraft.droidMode) {
+      return composerDraft.droidMode;
+    }
+    if (configuredDroidModeState?.currentModeId) {
+      return configuredDroidModeState.currentModeId;
+    }
+    return runtimeMode === "full-access" ? "auto-high" : "normal";
+  }, [composerDraft.droidMode, configuredDroidModeState?.currentModeId, runtimeMode, selectedProvider]);
+  const selectedModelOptionsForDispatch = useMemo(() => {
+    if (selectedProvider === "codex") {
+      const codexOptions = {
+        ...(supportsReasoningEffort && selectedEffort ? { reasoningEffort: selectedEffort } : {}),
+        ...(selectedCodexFastModeEnabled ? { fastMode: true } : {}),
+      };
+      return Object.keys(codexOptions).length > 0 ? { codex: codexOptions } : undefined;
+    }
+    if (selectedProvider === "droid" && selectedDroidModeId) {
+      return {
+        droid: {
+          mode: selectedDroidModeId,
+        } satisfies DroidModelOptions,
+      };
+    }
+    return undefined;
+  }, [
+    selectedCodexFastModeEnabled,
+    selectedDroidModeId,
+    selectedEffort,
+    selectedProvider,
+    supportsReasoningEffort,
+  ]);
   const providerOptionsForDispatch = useMemo(
     () =>
       buildProviderOptionsForDispatch({
@@ -1887,6 +1946,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const toggleInteractionMode = useCallback(() => {
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
   }, [handleInteractionModeChange, interactionMode]);
+  const handleDroidModeChange = useCallback(
+    (modeId: string) => {
+      if (selectedProvider !== "droid") return;
+      setComposerDraftDroidMode(threadId, modeId);
+      scheduleComposerFocus();
+    },
+    [scheduleComposerFocus, selectedProvider, setComposerDraftDroidMode, threadId],
+  );
 
   const persistThreadSettingsForNextTurn = useCallback(
     async (input: {
@@ -3933,50 +4000,60 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   {/* Divider */}
                   <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
 
-                  {/* Interaction mode toggle */}
-                  <Button
-                    variant="ghost"
-                    className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
-                    size="sm"
-                    type="button"
-                    onClick={toggleInteractionMode}
-                    title={
-                      interactionMode === "plan"
-                        ? "Plan mode — click to return to normal chat mode"
-                        : "Default mode — click to enter plan mode"
-                    }
-                  >
-                    <BotIcon />
-                    <span className="sr-only sm:not-sr-only">
-                      {interactionMode === "plan" ? "Plan" : "Chat"}
-                    </span>
-                  </Button>
+                  {selectedProvider === "droid" ? (
+                    <DroidModePicker
+                      selectedModeId={selectedDroidModeId}
+                      availableModes={availableDroidModes}
+                      onModeChange={handleDroidModeChange}
+                    />
+                  ) : (
+                    <>
+                      {/* Interaction mode toggle */}
+                      <Button
+                        variant="ghost"
+                        className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
+                        size="sm"
+                        type="button"
+                        onClick={toggleInteractionMode}
+                        title={
+                          interactionMode === "plan"
+                            ? "Plan mode — click to return to normal chat mode"
+                            : "Default mode — click to enter plan mode"
+                        }
+                      >
+                        <BotIcon />
+                        <span className="sr-only sm:not-sr-only">
+                          {interactionMode === "plan" ? "Plan" : "Chat"}
+                        </span>
+                      </Button>
 
-                  {/* Divider */}
-                  <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
+                      {/* Divider */}
+                      <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
 
-                  {/* Runtime mode toggle */}
-                  <Button
-                    variant="ghost"
-                    className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
-                    size="sm"
-                    type="button"
-                    onClick={() =>
-                      void handleRuntimeModeChange(
-                        runtimeMode === "full-access" ? "approval-required" : "full-access",
-                      )
-                    }
-                    title={
-                      runtimeMode === "full-access"
-                        ? "Full access — click to require approvals"
-                        : "Approval required — click for full access"
-                    }
-                  >
-                    {runtimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
-                    <span className="sr-only sm:not-sr-only">
-                      {runtimeMode === "full-access" ? "Full access" : "Supervised"}
-                    </span>
-                  </Button>
+                      {/* Runtime mode toggle */}
+                      <Button
+                        variant="ghost"
+                        className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
+                        size="sm"
+                        type="button"
+                        onClick={() =>
+                          void handleRuntimeModeChange(
+                            runtimeMode === "full-access" ? "approval-required" : "full-access",
+                          )
+                        }
+                        title={
+                          runtimeMode === "full-access"
+                            ? "Full access — click to require approvals"
+                            : "Approval required — click for full access"
+                        }
+                      >
+                        {runtimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
+                        <span className="sr-only sm:not-sr-only">
+                          {runtimeMode === "full-access" ? "Full access" : "Supervised"}
+                        </span>
+                      </Button>
+                    </>
+                  )}
                   <ContextWindowMeter usage={activeThread.session?.tokenUsage} />
                 </div>
 
@@ -6018,6 +6095,63 @@ const CodexTraitsPicker = memo(function CodexTraitsPicker(props: {
           >
             <MenuRadioItem value="off">off</MenuRadioItem>
             <MenuRadioItem value="on">on</MenuRadioItem>
+          </MenuRadioGroup>
+        </MenuGroup>
+      </MenuPopup>
+    </Menu>
+  );
+});
+
+const DroidModePicker = memo(function DroidModePicker(props: {
+  selectedModeId: string | null;
+  availableModes: ReadonlyArray<{
+    id: string;
+    name: string;
+    description?: string | null;
+  }>;
+  onModeChange: (modeId: string) => void;
+}) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const selectedMode =
+    props.availableModes.find((mode) => mode.id === props.selectedModeId) ??
+    (props.selectedModeId
+      ? { id: props.selectedModeId, name: props.selectedModeId, description: null }
+      : null);
+
+  return (
+    <Menu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+      <MenuTrigger
+        render={
+          <Button
+            size="sm"
+            variant="ghost"
+            className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
+          />
+        }
+      >
+        <span>{selectedMode?.name ?? "Mode"}</span>
+        <ChevronDownIcon aria-hidden="true" className="size-3 opacity-60" />
+      </MenuTrigger>
+      <MenuPopup align="start">
+        <MenuGroup>
+          <MenuRadioGroup
+            value={selectedMode?.id ?? ""}
+            onValueChange={(value) => {
+              if (!value) return;
+              props.onModeChange(value);
+              setIsMenuOpen(false);
+            }}
+          >
+            {props.availableModes.map((mode) => (
+              <MenuRadioItem key={mode.id} value={mode.id}>
+                <div className="flex min-w-0 flex-col">
+                  <span>{mode.name}</span>
+                  {mode.description ? (
+                    <span className="text-[11px] text-muted-foreground/70">{mode.description}</span>
+                  ) : null}
+                </div>
+              </MenuRadioItem>
+            ))}
           </MenuRadioGroup>
         </MenuGroup>
       </MenuPopup>

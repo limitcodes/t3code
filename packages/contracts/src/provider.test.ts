@@ -120,4 +120,19 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.modelOptions?.codex?.reasoningEffort).toBe("xhigh");
     expect(parsed.modelOptions?.codex?.fastMode).toBe(true);
   });
+
+  it("accepts Droid mode options", () => {
+    const parsed = decodeProviderSendTurnInput({
+      threadId: "thread-1",
+      model: "claude-opus-4-6",
+      modelOptions: {
+        droid: {
+          mode: "auto-medium",
+        },
+      },
+    });
+
+    expect(parsed.model).toBe("claude-opus-4-6");
+    expect(parsed.modelOptions?.droid?.mode).toBe("auto-medium");
+  });
 });

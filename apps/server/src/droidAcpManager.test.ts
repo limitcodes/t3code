@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDroidCliArgs,
   isDroidModelAvailable,
+  normalizeDroidRuntimeErrorMessage,
   normalizeDroidStartErrorMessage,
   readAvailableDroidModelIds,
 } from "./droidAcpManager";
@@ -48,5 +49,23 @@ describe("droidAcpManager model availability", () => {
     ).toBe(
       "Factory Droid requires authentication. Use `/login` in `droid`, or set FACTORY_API_KEY and try again.",
     );
+  });
+
+  it("normalizes billing runtime errors", () => {
+    expect(
+      normalizeDroidRuntimeErrorMessage(
+        '402 {"detail":"Ready to get started? Subscribe at https://app.factory.ai/settings/billing","status":402,"title":"Payment Required"}',
+      ),
+    ).toBe(
+      "Factory Droid rejected this request because the selected mode or model requires Factory billing for the current account.",
+    );
+  });
+
+  it("normalizes blocked HTML runtime errors", () => {
+    expect(
+      normalizeDroidRuntimeErrorMessage(
+        '403 <!DOCTYPE html><html lang="en"><head><title>Blocked</title></head><body></body></html>',
+      ),
+    ).toBe("Factory Droid rejected this request with an upstream 403 block page.");
   });
 });

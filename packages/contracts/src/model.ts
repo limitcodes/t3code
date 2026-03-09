@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { TrimmedNonEmptyString } from "./baseSchemas";
 import { ProviderKind } from "./orchestration";
 
 export const CODEX_REASONING_EFFORT_OPTIONS = ["xhigh", "high", "medium", "low"] as const;
@@ -10,8 +11,14 @@ export const CodexModelOptions = Schema.Struct({
 });
 export type CodexModelOptions = typeof CodexModelOptions.Type;
 
+export const DroidModelOptions = Schema.Struct({
+  mode: Schema.optional(TrimmedNonEmptyString),
+});
+export type DroidModelOptions = typeof DroidModelOptions.Type;
+
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
+  droid: Schema.optional(DroidModelOptions),
 });
 export type ProviderModelOptions = typeof ProviderModelOptions.Type;
 

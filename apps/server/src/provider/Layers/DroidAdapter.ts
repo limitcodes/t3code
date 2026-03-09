@@ -102,6 +102,9 @@ export const makeDroidAdapterLive = (options?: DroidAdapterLiveOptions) =>
               ...(input.input !== undefined ? { input: input.input } : {}),
               ...(input.attachments !== undefined ? { attachments: input.attachments } : {}),
               ...(input.model !== undefined ? { model: input.model } : {}),
+              ...(input.modelOptions?.droid?.mode !== undefined
+                ? { modeId: input.modelOptions.droid.mode }
+                : {}),
             }),
           catch: (cause) => toRequestError(input.threadId, "session/prompt", cause),
         });
