@@ -2,11 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type {
-  OrchestrationReadModel,
-  ProviderKind,
-  ProviderRuntimeEvent,
-} from "@t3tools/contracts";
+import type { OrchestrationReadModel, ProviderRuntimeEvent } from "@t3tools/contracts";
 import {
   ApprovalRequestId,
   CommandId,
@@ -49,7 +45,7 @@ const asTurnId = (value: string): TurnId => TurnId.makeUnsafe(value);
 type LegacyProviderRuntimeEvent = {
   readonly type: string;
   readonly eventId: EventId;
-  readonly provider: ProviderKind;
+  readonly provider: ProviderRuntimeEvent["provider"];
   readonly createdAt: string;
   readonly threadId: ThreadId;
   readonly turnId?: string | undefined;
@@ -244,10 +240,6 @@ describe("ProviderRuntimeIngestion", () => {
       payload: {
         state: "failed",
         errorMessage: "turn failed",
-        usage: {
-          usedTokens: 99_000,
-          maxTokens: 950_000,
-        },
       },
     });
 
@@ -256,73 +248,10 @@ describe("ProviderRuntimeIngestion", () => {
       (entry) =>
         entry.session?.status === "error" &&
         entry.session?.activeTurnId === null &&
-        entry.session?.lastError === "turn failed" &&
-        (entry.session?.tokenUsage as { usedTokens?: number } | undefined)?.usedTokens === 99_000,
+        entry.session?.lastError === "turn failed",
     );
     expect(thread.session?.status).toBe("error");
     expect(thread.session?.lastError).toBe("turn failed");
-    expect(thread.session?.tokenUsage).toEqual({
-      usedTokens: 99_000,
-      maxTokens: 950_000,
-    });
-  });
-
-  it("updates thread session token usage from provider runtime events", async () => {
-    const harness = await createHarness();
-    const tokenUsage = {
-      usedTokens: 99_000,
-      maxTokens: 950_000,
-    };
-
-    harness.emit({
-      type: "thread.token-usage.updated",
-      eventId: asEventId("evt-thread-token-usage"),
-      provider: "codex",
-      threadId: asThreadId("thread-1"),
-      createdAt: new Date().toISOString(),
-      payload: {
-        usage: tokenUsage,
-      },
-    });
-
-    const thread = await waitForThread(
-      harness.engine,
-      (entry) =>
-        (entry.session?.tokenUsage as { usedTokens?: number } | undefined)?.usedTokens === 99_000,
-    );
-
-    expect(thread.session?.tokenUsage).toEqual(tokenUsage);
-    expect(thread.session?.status).toBe("ready");
-  });
-
-  it("updates thread session token usage from task progress usage payloads", async () => {
-    const harness = await createHarness();
-    const tokenUsage = {
-      usedTokens: 120_000,
-      maxTokens: 950_000,
-    };
-
-    harness.emit({
-      type: "task.progress",
-      eventId: asEventId("evt-task-progress-usage"),
-      provider: "codex",
-      threadId: asThreadId("thread-1"),
-      createdAt: new Date().toISOString(),
-      turnId: asTurnId("turn-1"),
-      payload: {
-        taskId: "task-1" as never,
-        description: "reasoning",
-        usage: tokenUsage,
-      },
-    });
-
-    const thread = await waitForThread(
-      harness.engine,
-      (entry) =>
-        (entry.session?.tokenUsage as { usedTokens?: number } | undefined)?.usedTokens === 120_000,
-    );
-
-    expect(thread.session?.tokenUsage).toEqual(tokenUsage);
   });
 
   it("applies provider session.state.changed transitions directly", async () => {
@@ -905,6 +834,7 @@ describe("ProviderRuntimeIngestion", () => {
       payload: {
         itemType: "assistant_message",
         status: "completed",
+        detail: "hello live",
       },
     });
 

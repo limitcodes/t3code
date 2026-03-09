@@ -5,12 +5,13 @@ import {
   getSlashModelOptions,
   normalizeCustomModelSlugs,
   resolveAppServiceTier,
-  shouldShowFastTierIcon,
   resolveAppModelSelection,
+  shouldShowFastTierIcon,
+  supportsCustomModels,
 } from "./appSettings";
 
 describe("normalizeCustomModelSlugs", () => {
-  it("normalizes aliases, removes built-ins, and deduplicates values", () => {
+  it("ignores saved custom Codex models", () => {
     expect(
       normalizeCustomModelSlugs([
         " custom/internal-model ",
@@ -20,12 +21,27 @@ describe("normalizeCustomModelSlugs", () => {
         "",
         null,
       ]),
+    ).toEqual([]);
+  });
+
+  it("normalizes aliases, removes built-ins, and deduplicates supported providers", () => {
+    expect(
+      normalizeCustomModelSlugs(
+        [
+          " custom/internal-model ",
+          "claude-sonnet-4.5",
+          "custom/internal-model",
+          "",
+          null,
+        ],
+        "copilot",
+      ),
     ).toEqual(["custom/internal-model"]);
   });
 });
 
 describe("getAppModelOptions", () => {
-  it("appends saved custom models after the built-in options", () => {
+  it("keeps Codex limited to the built-in catalog", () => {
     const options = getAppModelOptions("codex", ["custom/internal-model"]);
 
     expect(options.map((option) => option.slug)).toEqual([
@@ -34,7 +50,6 @@ describe("getAppModelOptions", () => {
       "gpt-5.3-codex-spark",
       "gpt-5.2-codex",
       "gpt-5.2",
-      "custom/internal-model",
     ]);
   });
 
@@ -63,34 +78,23 @@ describe("getAppModelOptions", () => {
     });
   });
 
-  it("supports droid model catalogs and custom entries", () => {
-    const options = getAppModelOptions("droid", ["custom/droid-model"]);
-
-    expect(options.some((option) => option.slug === "claude-opus-4-6")).toBe(true);
-    expect(options.some((option) => option.slug === "gpt-5.4")).toBe(true);
-    expect(options.some((option) => option.slug === "glm-5")).toBe(true);
-    expect(options.at(-1)).toEqual({
-      slug: "custom/droid-model",
-      name: "custom/droid-model",
-      isCustom: true,
-    });
-  });
-
-  it("keeps the currently selected custom model available even if it is no longer saved", () => {
+  it("does not keep unsupported Codex selections in the picker catalog", () => {
     const options = getAppModelOptions("codex", [], "custom/selected-model");
 
-    expect(options.at(-1)).toEqual({
-      slug: "custom/selected-model",
-      name: "custom/selected-model",
-      isCustom: true,
-    });
+    expect(options.map((option) => option.slug)).toEqual([
+      "gpt-5.4",
+      "gpt-5.3-codex",
+      "gpt-5.3-codex-spark",
+      "gpt-5.2-codex",
+      "gpt-5.2",
+    ]);
   });
 });
 
 describe("resolveAppModelSelection", () => {
-  it("preserves saved custom model slugs instead of falling back to the default", () => {
+  it("falls back to the default for unsupported Codex models", () => {
     expect(resolveAppModelSelection("codex", ["galapagos-alpha"], "galapagos-alpha")).toBe(
-      "galapagos-alpha",
+      "gpt-5.4",
     );
   });
 
@@ -98,12 +102,11 @@ describe("resolveAppModelSelection", () => {
     expect(resolveAppModelSelection("codex", [], "")).toBe("gpt-5.4");
     expect(resolveAppModelSelection("copilot", [], "")).toBe("claude-sonnet-4.5");
     expect(resolveAppModelSelection("kimi", [], "")).toBe("kimi-for-coding");
-    expect(resolveAppModelSelection("droid", [], "")).toBe("claude-opus-4-6");
   });
 });
 
 describe("getSlashModelOptions", () => {
-  it("includes saved custom model slugs for /model command suggestions", () => {
+  it("keeps Codex /model suggestions limited to the built-in catalog", () => {
     const options = getSlashModelOptions(
       "codex",
       ["custom/internal-model"],
@@ -111,10 +114,10 @@ describe("getSlashModelOptions", () => {
       "gpt-5.3-codex",
     );
 
-    expect(options.some((option) => option.slug === "custom/internal-model")).toBe(true);
+    expect(options.some((option) => option.slug === "custom/internal-model")).toBe(false);
   });
 
-  it("filters slash-model suggestions across built-in and custom model names", () => {
+  it("filters slash-model suggestions across built-in Codex model names", () => {
     const options = getSlashModelOptions(
       "codex",
       ["openai/gpt-oss-120b"],
@@ -122,7 +125,26 @@ describe("getSlashModelOptions", () => {
       "gpt-5.3-codex",
     );
 
-    expect(options.map((option) => option.slug)).toEqual(["openai/gpt-oss-120b"]);
+    expect(options).toEqual([]);
+  });
+
+  it("still includes saved custom model slugs for supported providers", () => {
+    const options = getSlashModelOptions(
+      "copilot",
+      ["custom/copilot-model"],
+      "custom",
+      "claude-sonnet-4.5",
+    );
+
+    expect(options.map((option) => option.slug)).toEqual(["custom/copilot-model"]);
+  });
+});
+
+describe("supportsCustomModels", () => {
+  it("disables custom model catalogs for Codex only", () => {
+    expect(supportsCustomModels("codex")).toBe(false);
+    expect(supportsCustomModels("copilot")).toBe(true);
+    expect(supportsCustomModels("kimi")).toBe(true);
   });
 });
 

@@ -63,10 +63,9 @@ const MODEL_PROVIDER_SETTINGS: Array<{
   {
     provider: "copilot",
     title: "GitHub Copilot",
-    description:
-      "Save additional GitHub Copilot model ids for the picker and `/model` command.",
-    placeholder: "your-copilot-model-id",
-    example: "claude-sonnet-4.5",
+    description: "Save additional Copilot model slugs for the picker and `/model` command.",
+    placeholder: "your-copilot-model-slug",
+    example: "claude-sonnet-4.6",
   },
   {
     provider: "kimi",
@@ -83,6 +82,22 @@ const MODEL_PROVIDER_SETTINGS: Array<{
     example: "claude-opus-4-6",
   },
 ] as const;
+
+const VISIBLE_CUSTOM_THEME_PRESET_LABELS = CUSTOM_THEME_OPTIONS.filter(
+  (option) => option.id !== "none" && option.id !== "catppuccin-auto",
+).map((option) => option.label);
+
+function formatNaturalList(values: readonly string[]): string {
+  if (values.length <= 1) {
+    return values[0] ?? "";
+  }
+
+  if (values.length === 2) {
+    return `${values[0]} and ${values[1]}`;
+  }
+
+  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
+}
 
 function getCustomModelsForProvider(
   settings: ReturnType<typeof useAppSettings>["settings"],
@@ -389,7 +404,7 @@ function SettingsRouteView() {
                   <p className="mt-1">This preset overrides the base appearance while it is active.</p>
                 ) : null}
                 <p className="mt-1">
-                  Presets currently include Catppuccin, GitHub Dark, Nord, and Visual Studio 2017 Dark.
+                  Presets currently include {formatNaturalList(VISIBLE_CUSTOM_THEME_PRESET_LABELS)}.
                 </p>
               </div>
 
@@ -472,17 +487,14 @@ function SettingsRouteView() {
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">GitHub Copilot CLI</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  These overrides apply to new GitHub Copilot sessions. Sign in with{" "}
-                  <code>copilot login</code>, <code>gh auth login</code>, or a supported token
-                  environment variable.
+                  This override applies to new Copilot sessions and lets you use a non-default
+                  <code> copilot</code> install.
                 </p>
               </div>
 
               <div className="space-y-4">
                 <label htmlFor="copilot-binary-path" className="block space-y-1">
-                  <span className="text-xs font-medium text-foreground">
-                    Copilot binary path
-                  </span>
+                  <span className="text-xs font-medium text-foreground">Copilot binary path</span>
                   <Input
                     id="copilot-binary-path"
                     value={copilotBinaryPath}
@@ -511,7 +523,7 @@ function SettingsRouteView() {
                       })
                     }
                   >
-                    Reset copilot override
+                    Reset copilot overrides
                   </Button>
                 </div>
               </div>

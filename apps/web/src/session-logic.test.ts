@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import {
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
-  deriveConfiguredDroidModeStateFromActivityGroups,
   deriveConfiguredModelOptions,
   deriveConfiguredModelOptionsFromActivityGroups,
   PROVIDER_OPTIONS,
@@ -367,56 +366,6 @@ describe("deriveActivePlanState", () => {
       turnId: "turn-1",
       explanation: "Refined plan",
       steps: [{ step: "Implement Codex user input", status: "inProgress" }],
-    });
-  });
-});
-
-describe("deriveConfiguredDroidModeStateFromActivityGroups", () => {
-  it("reads the latest Droid mode configuration", () => {
-    expect(
-      deriveConfiguredDroidModeStateFromActivityGroups([
-        [
-          makeActivity({
-            id: "session-configured-droid",
-            createdAt: "2026-03-09T00:00:01.000Z",
-            kind: "session.configured",
-            summary: "Session configured",
-            tone: "info",
-            payload: {
-              provider: "droid",
-              config: {
-                currentModeId: "auto-medium",
-                availableModes: [
-                  {
-                    id: "normal",
-                    name: "Auto (Off)",
-                    description: "Auto-approves only read operations",
-                  },
-                  {
-                    id: "auto-medium",
-                    name: "Auto (Medium)",
-                    description: "Auto-approves medium-risk actions during the session",
-                  },
-                ],
-              },
-            },
-          }),
-        ],
-      ]),
-    ).toEqual({
-      currentModeId: "auto-medium",
-      availableModes: [
-        {
-          id: "normal",
-          name: "Auto (Off)",
-          description: "Auto-approves only read operations",
-        },
-        {
-          id: "auto-medium",
-          name: "Auto (Medium)",
-          description: "Auto-approves medium-risk actions during the session",
-        },
-      ],
     });
   });
 });
@@ -808,7 +757,6 @@ describe("PROVIDER_OPTIONS", () => {
       { value: "codex", label: "Codex", available: true },
       { value: "copilot", label: "GitHub Copilot", available: true },
       { value: "kimi", label: "Kimi Code", available: true },
-      { value: "droid", label: "Droid", available: true },
       { value: "claudeCode", label: "Claude Code", available: false },
       { value: "cursor", label: "Cursor", available: false },
     ]);

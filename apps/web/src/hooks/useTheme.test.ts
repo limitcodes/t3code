@@ -59,6 +59,7 @@ describe("resolveAppliedCustomTheme", () => {
       "Catppuccin Mocha",
     );
     expect(resolveAppliedCustomTheme("github-dark-dimmed", "light")?.appearance).toBe("dark");
+    expect(resolveAppliedCustomTheme("t3-chat-theme", "dark")?.label).toBe("T3 Chat Theme");
   });
 });
 
@@ -66,6 +67,7 @@ describe("resolvePinnedCustomThemeAppearance", () => {
   it("returns pinned appearances for fixed presets only", () => {
     expect(resolvePinnedCustomThemeAppearance("catppuccin-latte")).toBe("light");
     expect(resolvePinnedCustomThemeAppearance("nord")).toBe("dark");
+    expect(resolvePinnedCustomThemeAppearance("t3-chat-theme")).toBe("dark");
     expect(resolvePinnedCustomThemeAppearance("catppuccin-auto")).toBeNull();
     expect(resolvePinnedCustomThemeAppearance("none")).toBeNull();
   });

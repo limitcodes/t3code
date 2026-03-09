@@ -11,14 +11,13 @@
  */
 import {
   NonNegativeInt,
+  ThreadId,
   ProviderInterruptTurnInput,
-  type ProviderStartOptions,
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
   ProviderSendTurnInput,
   ProviderSessionStartInput,
   ProviderStopSessionInput,
-  ThreadId,
   type ProviderRuntimeEvent,
   type ProviderSession,
 } from "@t3tools/contracts";
@@ -87,17 +86,28 @@ function toRuntimeStatus(session: ProviderSession): "starting" | "running" | "st
   }
 }
 
-function toRuntimePayloadFromSession(input: {
-  readonly session: ProviderSession;
-  readonly providerOptions?: ProviderStartOptions;
-}): Record<string, unknown> {
+function toRuntimePayloadFromSession(
+  session: ProviderSession,
+  extra?: { readonly providerOptions?: unknown },
+): Record<string, unknown> {
   return {
-    cwd: input.session.cwd ?? null,
-    model: input.session.model ?? null,
-    activeTurnId: input.session.activeTurnId ?? null,
-    lastError: input.session.lastError ?? null,
-    ...(input.providerOptions !== undefined ? { providerOptions: input.providerOptions } : {}),
+    cwd: session.cwd ?? null,
+    model: session.model ?? null,
+    activeTurnId: session.activeTurnId ?? null,
+    lastError: session.lastError ?? null,
+    ...(extra?.providerOptions !== undefined ? { providerOptions: extra.providerOptions } : {}),
   };
+}
+
+function readPersistedProviderOptions(
+  runtimePayload: ProviderRuntimeBinding["runtimePayload"],
+): Record<string, unknown> | undefined {
+  if (!runtimePayload || typeof runtimePayload !== "object" || Array.isArray(runtimePayload)) {
+    return undefined;
+  }
+  const raw = "providerOptions" in runtimePayload ? runtimePayload.providerOptions : undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  return raw as Record<string, unknown>;
 }
 
 function readPersistedCwd(
@@ -110,17 +120,6 @@ function readPersistedCwd(
   if (typeof rawCwd !== "string") return undefined;
   const trimmed = rawCwd.trim();
   return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function readPersistedProviderOptions(
-  runtimePayload: ProviderRuntimeBinding["runtimePayload"],
-): ProviderStartOptions | undefined {
-  if (!runtimePayload || typeof runtimePayload !== "object" || Array.isArray(runtimePayload)) {
-    return undefined;
-  }
-  return "providerOptions" in runtimePayload
-    ? (runtimePayload.providerOptions as ProviderStartOptions | undefined)
-    : undefined;
 }
 
 const makeProviderService = (options?: ProviderServiceLiveOptions) =>
@@ -153,9 +152,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     const upsertSessionBinding = (
       session: ProviderSession,
       threadId: ThreadId,
-      options?: {
-        readonly providerOptions?: ProviderStartOptions;
-      },
+      extra?: { readonly providerOptions?: unknown },
     ) =>
       directory.upsert({
         threadId,
@@ -163,12 +160,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         runtimeMode: session.runtimeMode,
         status: toRuntimeStatus(session),
         ...(session.resumeCursor !== undefined ? { resumeCursor: session.resumeCursor } : {}),
-        runtimePayload: toRuntimePayloadFromSession({
-          session,
-          ...(options?.providerOptions !== undefined
-            ? { providerOptions: options.providerOptions }
-            : {}),
-        }),
+        runtimePayload: toRuntimePayloadFromSession(session, extra),
       });
 
     const providers = yield* registry.listProviders();
@@ -238,13 +230,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           );
         }
 
-        yield* upsertSessionBinding(
-          resumed,
-          input.binding.threadId,
-          persistedProviderOptions === undefined
-            ? undefined
-            : { providerOptions: persistedProviderOptions },
-        );
+        yield* upsertSessionBinding(resumed, input.binding.threadId);
         yield* analytics.record("provider.session.recovered", {
           provider: resumed.provider,
           strategy: "resume-thread",
@@ -305,13 +291,9 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           );
         }
 
-        yield* upsertSessionBinding(
-          session,
-          threadId,
-          input.providerOptions === undefined
-            ? undefined
-            : { providerOptions: input.providerOptions },
-        );
+        yield* upsertSessionBinding(session, threadId, {
+          ...(input.providerOptions !== undefined ? { providerOptions: input.providerOptions } : {}),
+        });
         yield* analytics.record("provider.session.started", {
           provider: session.provider,
           runtimeMode: input.runtimeMode,

@@ -45,6 +45,13 @@ export type ProviderSandboxMode = typeof ProviderSandboxMode.Type;
 export const ProviderServiceTier = Schema.Literals(["fast", "flex"]);
 export type ProviderServiceTier = typeof ProviderServiceTier.Type;
 export const DEFAULT_PROVIDER_KIND: ProviderKind = "codex";
+const CodexProviderStartOptions = Schema.Struct({
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+  homePath: Schema.optional(TrimmedNonEmptyString),
+});
+const CopilotProviderStartOptions = Schema.Struct({
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+});
 export const RuntimeMode = Schema.Literals(["approval-required", "full-access"]);
 export type RuntimeMode = typeof RuntimeMode.Type;
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
@@ -65,15 +72,6 @@ export type ProviderApprovalDecision = typeof ProviderApprovalDecision.Type;
 export const ProviderUserInputAnswers = Schema.Record(Schema.String, Schema.Unknown);
 export type ProviderUserInputAnswers = typeof ProviderUserInputAnswers.Type;
 
-const CodexProviderStartOptions = Schema.Struct({
-  binaryPath: Schema.optional(TrimmedNonEmptyString),
-  homePath: Schema.optional(TrimmedNonEmptyString),
-});
-
-const CopilotProviderStartOptions = Schema.Struct({
-  binaryPath: Schema.optional(TrimmedNonEmptyString),
-});
-
 const KimiProviderStartOptions = Schema.Struct({
   binaryPath: Schema.optional(TrimmedNonEmptyString),
   apiKey: Schema.optional(TrimmedNonEmptyString),
@@ -91,7 +89,6 @@ export const ProviderStartOptions = Schema.Struct({
   droid: Schema.optional(DroidProviderStartOptions),
 });
 export type ProviderStartOptions = typeof ProviderStartOptions.Type;
-
 export const PROVIDER_SEND_TURN_MAX_INPUT_CHARS = 120_000;
 export const PROVIDER_SEND_TURN_MAX_ATTACHMENTS = 8;
 export const PROVIDER_SEND_TURN_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -208,7 +205,7 @@ export const OrchestrationSession = Schema.Struct({
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => DEFAULT_RUNTIME_MODE)),
   activeTurnId: Schema.NullOr(TurnId),
   lastError: Schema.NullOr(TrimmedNonEmptyString),
-  tokenUsage: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  tokenUsage: Schema.optional(Schema.Unknown),
   updatedAt: IsoDateTime,
 });
 export type OrchestrationSession = typeof OrchestrationSession.Type;

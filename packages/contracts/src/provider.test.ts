@@ -72,27 +72,6 @@ describe("ProviderSessionStartInput", () => {
     expect(parsed.providerOptions?.kimi?.binaryPath).toBe("/usr/local/bin/kimi");
   });
 
-  it("accepts droid-compatible payloads", () => {
-    const parsed = decodeProviderSessionStartInput({
-      threadId: "thread-1",
-      provider: "droid",
-      cwd: "/tmp/workspace",
-      model: "claude-opus-4-6",
-      runtimeMode: "approval-required",
-      providerOptions: {
-        droid: {
-          binaryPath: "/usr/local/bin/droid",
-          apiKey: "fk-test",
-        },
-      },
-    });
-
-    expect(parsed.provider).toBe("droid");
-    expect(parsed.model).toBe("claude-opus-4-6");
-    expect(parsed.providerOptions?.droid?.binaryPath).toBe("/usr/local/bin/droid");
-    expect(parsed.providerOptions?.droid?.apiKey).toBe("fk-test");
-  });
-
   it("rejects payloads without runtime mode", () => {
     expect(() =>
       decodeProviderSessionStartInput({
@@ -119,20 +98,5 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.model).toBe("gpt-5.3-codex");
     expect(parsed.modelOptions?.codex?.reasoningEffort).toBe("xhigh");
     expect(parsed.modelOptions?.codex?.fastMode).toBe(true);
-  });
-
-  it("accepts Droid mode options", () => {
-    const parsed = decodeProviderSendTurnInput({
-      threadId: "thread-1",
-      model: "claude-opus-4-6",
-      modelOptions: {
-        droid: {
-          mode: "auto-medium",
-        },
-      },
-    });
-
-    expect(parsed.model).toBe("claude-opus-4-6");
-    expect(parsed.modelOptions?.droid?.mode).toBe("auto-medium");
   });
 });

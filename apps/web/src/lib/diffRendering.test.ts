@@ -40,6 +40,7 @@ describe("resolveDiffThemeName", () => {
     expect(resolveDiffThemeName("light", "catppuccin-latte")).toBe("catppuccin-latte");
     expect(resolveDiffThemeName("dark", "github-dark-dimmed")).toBe("github-dark-dimmed");
     expect(resolveDiffThemeName("dark", "visual-studio-2017-dark")).toBe("dark-plus");
+    expect(resolveDiffThemeName("dark", "t3-chat-theme")).toBe("catppuccin-mocha");
   });
 });
 

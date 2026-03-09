@@ -9,6 +9,7 @@ import {
 import {
   getModelOptions,
   normalizeModelSlug,
+  resolveModelSlug,
   resolveModelSlugForProvider,
 } from "@t3tools/shared/model";
 import { create } from "zustand";
@@ -24,6 +25,7 @@ export interface AppState {
 
 const PERSISTED_STATE_KEY = "t3code:renderer-state:v8";
 const LEGACY_PERSISTED_STATE_KEYS = [
+  "t3code:renderer-state:v7",
   "t3code:renderer-state:v6",
   "t3code:renderer-state:v5",
   "t3code:renderer-state:v4",
@@ -105,20 +107,13 @@ function mapProjectsFromReadModel(
     const existing =
       previous.find((entry) => entry.id === project.id) ??
       previous.find((entry) => entry.cwd === project.workspaceRoot);
-    const inferredProvider = inferProviderForThreadModel({
-      model: project.defaultModel ?? existing?.model ?? DEFAULT_MODEL_BY_PROVIDER.codex,
-      sessionProviderName: null,
-    });
     return {
       id: project.id,
       name: project.title,
       cwd: project.workspaceRoot,
       model:
         existing?.model ??
-        resolveModelSlugForProvider(
-          inferredProvider,
-          project.defaultModel ?? DEFAULT_MODEL_BY_PROVIDER[inferredProvider],
-        ),
+        resolveModelSlug(project.defaultModel ?? DEFAULT_MODEL_BY_PROVIDER.codex),
       expanded:
         existing?.expanded ??
         (persistedExpandedProjectCwds.size > 0
@@ -278,9 +273,6 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
               activeTurnId: thread.session.activeTurnId ?? undefined,
               createdAt: thread.session.updatedAt,
               updatedAt: thread.session.updatedAt,
-              ...(thread.session.tokenUsage !== undefined
-                ? { tokenUsage: thread.session.tokenUsage }
-                : {}),
               ...(thread.session.lastError ? { lastError: thread.session.lastError } : {}),
             }
           : null,

@@ -214,10 +214,13 @@ class MockTerminalManager implements TerminalManagerShape {
   readonly dispose: TerminalManagerShape["dispose"] = Effect.void;
 }
 
-function connectWs(port: number, token?: string): Promise<WebSocket> {
+function connectWs(port: number, token?: string, origin?: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const query = token ? `?token=${encodeURIComponent(token)}` : "";
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/${query}`);
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${port}/${query}`,
+      origin !== undefined ? { origin } : { origin: `http://127.0.0.1:${port}` },
+    );
     const pending: PendingMessages = { queue: [], waiters: [] };
     pendingBySocket.set(ws, pending);
 
@@ -383,6 +386,8 @@ describe("WebSocket Server", () => {
         SqlClient.SqlClient,
         SqlError.SqlError | MigrationError | PlatformError.PlatformError
       >;
+      mode?: "web" | "desktop";
+      host?: string;
       cwd?: string;
       autoBootstrapProjectFromCwd?: boolean;
       logWebSocketEvents?: boolean;
@@ -412,9 +417,9 @@ describe("WebSocket Server", () => {
     );
     const openLayer = Layer.succeed(Open, options.open ?? defaultOpenService);
     const serverConfigLayer = Layer.succeed(ServerConfig, {
-      mode: "web",
+      mode: options.mode ?? "web",
       port: 0,
-      host: undefined,
+      host: options.host,
       cwd: options.cwd ?? "/test/project",
       keybindingsConfigPath: path.join(stateDir, "keybindings.json"),
       stateDir,
@@ -941,6 +946,38 @@ describe("WebSocket Server", () => {
     expect(openCalls).toEqual([{ cwd: "/my/workspace", editor: "cursor" }]);
   });
 
+  it("allows shell.openInEditor for the keybindings config path", async () => {
+    const stateDir = makeTempDir("t3code-state-open-keybindings-");
+    const keybindingsPath = path.join(stateDir, "keybindings.json");
+    const openCalls: Array<{ cwd: string; editor: string }> = [];
+    const openService: OpenShape = {
+      openBrowser: () => Effect.void,
+      openInEditor: (input) => {
+        openCalls.push({ cwd: input.cwd, editor: input.editor });
+        return Effect.void;
+      },
+    };
+
+    server = await createTestServer({
+      cwd: "/my/workspace",
+      stateDir,
+      open: openService,
+    });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.shellOpenInEditor, {
+      cwd: keybindingsPath,
+      editor: "cursor",
+    });
+    expect(response.error).toBeUndefined();
+    expect(openCalls).toEqual([{ cwd: keybindingsPath, editor: "cursor" }]);
+  });
+
   it("reads keybindings from the configured state directory", async () => {
     const stateDir = makeTempDir("t3code-state-keybindings-");
     const keybindingsPath = path.join(stateDir, "keybindings.json");
@@ -1272,7 +1309,7 @@ describe("WebSocket Server", () => {
     const cwd = makeTempDir("t3code-ws-terminal-cwd-");
     const terminalManager = new MockTerminalManager();
     server = await createTestServer({
-      cwd: "/test",
+      cwd,
       terminalManager,
     });
     const addr = server.address();
@@ -1333,9 +1370,7 @@ describe("WebSocket Server", () => {
     };
     terminalManager.emitEvent(manualEvent);
 
-    const push = (await waitForMessage(ws)) as WsPush;
-    expect(push.type).toBe("push");
-    expect(push.channel).toBe(WS_CHANNELS.terminalEvent);
+    const push = await waitForPush(ws, WS_CHANNELS.terminalEvent);
     expect((push.data as TerminalEvent).type).toBe("output");
   });
 
@@ -1420,7 +1455,10 @@ describe("WebSocket Server", () => {
     };
 
     try {
-      server = await createTestServer({ cwd: "/test", open: brokenOpenService });
+      const workspace = makeTempDir("t3code-ws-handler-still-usable-");
+      fs.writeFileSync(path.join(workspace, "file.txt"), "ok\n", "utf8");
+
+      server = await createTestServer({ cwd: workspace, open: brokenOpenService });
       const addr = server.address();
       const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
@@ -1433,7 +1471,7 @@ describe("WebSocket Server", () => {
           id: "req-broken-open",
           body: {
             _tag: WS_METHODS.shellOpenInEditor,
-            cwd: "/tmp",
+            cwd: workspace,
             editor: "cursor",
           },
         }),
@@ -1441,9 +1479,6 @@ describe("WebSocket Server", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(unhandledRejections).toHaveLength(0);
-
-      const workspace = makeTempDir("t3code-ws-handler-still-usable-");
-      fs.writeFileSync(path.join(workspace, "file.txt"), "ok\n", "utf8");
       const response = await sendRequest(ws, WS_METHODS.projectsSearchEntries, {
         cwd: workspace,
         query: "file",
@@ -1503,7 +1538,7 @@ describe("WebSocket Server", () => {
     fs.mkdirSync(path.join(workspace, ".git"), { recursive: true });
     fs.writeFileSync(path.join(workspace, ".git", "HEAD"), "ref: refs/heads/main\n", "utf8");
 
-    server = await createTestServer({ cwd: "/test" });
+    server = await createTestServer({ cwd: workspace });
     const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
@@ -1529,7 +1564,7 @@ describe("WebSocket Server", () => {
   it("supports projects.writeFile within the workspace root", async () => {
     const workspace = makeTempDir("t3code-ws-write-file-");
 
-    server = await createTestServer({ cwd: "/test" });
+    server = await createTestServer({ cwd: workspace });
     const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
@@ -1555,7 +1590,7 @@ describe("WebSocket Server", () => {
   it("rejects projects.writeFile paths outside the workspace root", async () => {
     const workspace = makeTempDir("t3code-ws-write-file-reject-");
 
-    server = await createTestServer({ cwd: "/test" });
+    server = await createTestServer({ cwd: workspace });
     const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
@@ -1572,6 +1607,27 @@ describe("WebSocket Server", () => {
     expect(response.result).toBeUndefined();
     expect(response.error?.message).toContain("Workspace file path must stay within the project root.");
     expect(fs.existsSync(path.join(workspace, "..", "escape.md"))).toBe(false);
+  });
+
+  it("rejects project file writes outside authorized workspaces", async () => {
+    const workspace = makeTempDir("t3code-ws-write-file-authorized-");
+
+    server = await createTestServer({ cwd: workspace });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.projectsWriteFile, {
+      cwd: path.dirname(workspace),
+      relativePath: "escape.md",
+      contents: "# no\n",
+    });
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain("current project, worktree, or trusted app paths");
   });
 
   it("routes git core methods over websocket", async () => {
@@ -1594,7 +1650,7 @@ describe("WebSocket Server", () => {
     );
 
     server = await createTestServer({
-      cwd: "/test",
+      cwd: "/repo/path",
       gitCore: {
         listBranches,
         initRepo,
@@ -1704,4 +1760,34 @@ describe("WebSocket Server", () => {
     const welcome = (await waitForMessage(authorizedWs)) as WsPush;
     expect(welcome.channel).toBe(WS_CHANNELS.serverWelcome);
   });
+
+  it("rejects browser websocket connections from unexpected origins", async () => {
+    server = await createTestServer({ cwd: "/test" });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    await new Promise<void>((resolve) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/`, { origin: "https://evil.example" });
+      ws.once("open", () => {
+        throw new Error("Unexpectedly accepted websocket connection from disallowed origin");
+      });
+      ws.once("error", () => resolve());
+    });
+  });
+
+  it("allows null websocket origins in desktop mode when auth is enabled", async () => {
+    server = await createTestServer({
+      cwd: "/test",
+      mode: "desktop",
+      authToken: "secret-token",
+    });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const authorizedWs = await connectWs(port, "secret-token", "null");
+    connections.push(authorizedWs);
+    const welcome = (await waitForMessage(authorizedWs)) as WsPush;
+    expect(welcome.channel).toBe(WS_CHANNELS.serverWelcome);
+  });
+
 });

@@ -4,9 +4,11 @@ import { Cause, Schema } from "effect";
 type PushListener = (data: unknown) => void;
 
 interface PendingRequest {
+  envelope: WsRequestEnvelope;
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
+  sent: boolean;
 }
 
 const REQUEST_TIMEOUT_MS = 60_000;
@@ -44,7 +46,7 @@ export class WsTransport {
         ? bridgeUrl
         : envUrl && envUrl.length > 0
           ? envUrl
-          : `ws://${window.location.hostname}:${window.location.port}`);
+          : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:${window.location.port}`);
     this.connect();
   }
 
@@ -63,12 +65,14 @@ export class WsTransport {
       }, REQUEST_TIMEOUT_MS);
 
       this.pending.set(id, {
+        envelope: message,
         resolve: resolve as (result: unknown) => void,
         reject,
         timeout,
+        sent: false,
       });
 
-      this.send(message);
+      this.flushPendingRequests();
     });
   }
 
@@ -111,6 +115,7 @@ export class WsTransport {
     ws.addEventListener("open", () => {
       this.ws = ws;
       this.reconnectAttempt = 0;
+      this.flushPendingRequests();
     });
 
     ws.addEventListener("message", (event) => {
@@ -119,6 +124,7 @@ export class WsTransport {
 
     ws.addEventListener("close", () => {
       this.ws = null;
+      this.rejectSentPendingRequests();
       this.scheduleReconnect();
     });
 
@@ -172,29 +178,29 @@ export class WsTransport {
     }
   }
 
-  private send(message: WsRequestEnvelope) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
+  private flushPendingRequests() {
+    if (this.ws?.readyState !== WebSocket.OPEN) {
       return;
     }
 
-    // If not connected, wait for connection
-    const waitForOpen = () => {
-      const check = setInterval(() => {
-        if (this.disposed) {
-          clearInterval(check);
-          return;
-        }
-        if (this.ws?.readyState === WebSocket.OPEN) {
-          clearInterval(check);
-          this.ws.send(JSON.stringify(message));
-        }
-      }, 50);
+    for (const pending of this.pending.values()) {
+      if (pending.sent) {
+        continue;
+      }
+      this.ws.send(JSON.stringify(pending.envelope));
+      pending.sent = true;
+    }
+  }
 
-      // Give up after timeout (the pending request will time out on its own)
-      setTimeout(() => clearInterval(check), REQUEST_TIMEOUT_MS);
-    };
-    waitForOpen();
+  private rejectSentPendingRequests() {
+    for (const [id, pending] of this.pending) {
+      if (!pending.sent) {
+        continue;
+      }
+      clearTimeout(pending.timeout);
+      pending.reject(new Error("WebSocket disconnected before a response was received"));
+      this.pending.delete(id);
+    }
   }
 
   private scheduleReconnect() {

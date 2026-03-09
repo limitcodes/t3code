@@ -169,10 +169,7 @@ const ServerConfigLive = (input: CliInput) =>
       const staticDir = devUrl ? undefined : yield* cliConfig.resolveStaticDir;
       const { join } = yield* Path.Path;
       const keybindingsConfigPath = join(stateDir, "keybindings.json");
-      const host =
-        Option.getOrUndefined(input.host) ??
-        env.host ??
-        (mode === "desktop" ? "127.0.0.1" : undefined);
+      const host = Option.getOrUndefined(input.host) ?? env.host ?? DEFAULT_LOOPBACK_HOST;
 
       const config: ServerConfigShape = {
         mode,
@@ -206,6 +203,8 @@ const LayerLive = (input: CliInput) =>
 
 const isWildcardHost = (host: string | undefined): boolean =>
   host === "0.0.0.0" || host === "::" || host === "[::]";
+
+const DEFAULT_LOOPBACK_HOST = "127.0.0.1";
 
 const formatHostForUrl = (host: string): string =>
   host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;

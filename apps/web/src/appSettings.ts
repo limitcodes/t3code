@@ -29,6 +29,12 @@ export type AppServiceTier = (typeof APP_SERVICE_TIER_OPTIONS)[number]["value"];
 const AppServiceTierSchema = Schema.Literals(["auto", "fast", "flex"]);
 const CustomThemeIdSchema = Schema.Literals(CUSTOM_THEME_IDS);
 const MODELS_WITH_FAST_SUPPORT = new Set(["gpt-5.4"]);
+const PROVIDERS_WITH_CUSTOM_MODEL_SUPPORT = new Set<ProviderKind>([
+  "codex",
+  "copilot",
+  "kimi",
+  "droid",
+]);
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
   copilot: new Set(getModelOptions("copilot").map((option) => option.slug)),
@@ -111,10 +117,18 @@ let listeners: Array<() => void> = [];
 let cachedRawSettings: string | null | undefined;
 let cachedSnapshot: AppSettings = DEFAULT_APP_SETTINGS;
 
+export function supportsCustomModels(provider: ProviderKind): boolean {
+  return PROVIDERS_WITH_CUSTOM_MODEL_SUPPORT.has(provider);
+}
+
 export function normalizeCustomModelSlugs(
   models: Iterable<string | null | undefined>,
   provider: ProviderKind = "codex",
 ): string[] {
+  if (!supportsCustomModels(provider)) {
+    return [];
+  }
+
   const normalizedModels: string[] = [];
   const seen = new Set<string>();
   const builtInModelSlugs = BUILT_IN_MODEL_SLUGS_BY_PROVIDER[provider];
@@ -167,6 +181,11 @@ export function getAppModelOptions(
     name,
     isCustom: false,
   }));
+
+  if (!supportsCustomModels(provider)) {
+    return options;
+  }
+
   const seen = new Set(options.map((option) => option.slug));
 
   for (const slug of normalizeCustomModelSlugs(customModels, provider)) {

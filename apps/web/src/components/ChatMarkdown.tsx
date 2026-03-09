@@ -21,10 +21,10 @@ import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
-  ALL_DIFF_THEME_NAMES,
-  resolveDiffThemeName,
-  type DiffThemeName,
-} from "../lib/diffRendering";
+  ALL_CHAT_CODE_THEME_NAMES,
+  resolveChatCodeThemeName,
+  type ChatCodeThemeName,
+} from "../lib/chatCodeThemes";
 import { fnv1a32 } from "../lib/diffRendering";
 import { LRUCache } from "../lib/lruCache";
 import { useTheme } from "../hooks/useTheme";
@@ -70,7 +70,16 @@ const highlighterPromiseCache = new Map<string, Promise<DiffsHighlighter>>();
 
 function extractFenceLanguage(className: string | undefined): string {
   const match = className?.match(CODE_FENCE_LANGUAGE_REGEX);
-  return match?.[1] ?? "text";
+  const language = match?.[1]?.toLowerCase() ?? "text";
+
+  switch (language) {
+    case "cpp":
+    case "cxx":
+    case "cc":
+      return "c++";
+    default:
+      return language;
+  }
 }
 
 function nodeToPlainText(node: ReactNode): string {
@@ -108,7 +117,11 @@ function extractCodeBlock(
   };
 }
 
-function createHighlightCacheKey(code: string, language: string, themeName: DiffThemeName): string {
+function createHighlightCacheKey(
+  code: string,
+  language: string,
+  themeName: ChatCodeThemeName,
+): string {
   return `${fnv1a32(code).toString(36)}:${code.length}:${language}:${themeName}`;
 }
 
@@ -121,7 +134,7 @@ function getHighlighterPromise(language: string): Promise<DiffsHighlighter> {
   if (cached) return cached;
 
   const promise = getSharedHighlighter({
-    themes: [...ALL_DIFF_THEME_NAMES],
+    themes: [...ALL_CHAT_CODE_THEME_NAMES],
     langs: [language as SupportedLanguages],
     preferredHighlighter: "shiki-js",
   }).catch((err) => {
@@ -188,7 +201,7 @@ function MarkdownCodeBlock({ code, children }: { code: string; children: ReactNo
 interface SuspenseShikiCodeBlockProps {
   className: string | undefined;
   code: string;
-  themeName: DiffThemeName;
+  themeName: ChatCodeThemeName;
   isStreaming: boolean;
 }
 
@@ -238,7 +251,7 @@ function SuspenseShikiCodeBlock({
 
 function ChatMarkdown({ text, cwd, isStreaming = false }: ChatMarkdownProps) {
   const { resolvedTheme, activeCustomThemeId } = useTheme();
-  const diffThemeName = resolveDiffThemeName(resolvedTheme, activeCustomThemeId);
+  const codeThemeName = resolveChatCodeThemeName(resolvedTheme, activeCustomThemeId);
   const markdownComponents = useMemo<Components>(
     () => ({
       a({ node: _node, href, ...props }) {
@@ -277,7 +290,7 @@ function ChatMarkdown({ text, cwd, isStreaming = false }: ChatMarkdownProps) {
                 <SuspenseShikiCodeBlock
                   className={codeBlock.className}
                   code={codeBlock.code}
-                  themeName={diffThemeName}
+                  themeName={codeThemeName}
                   isStreaming={isStreaming}
                 />
               </Suspense>
@@ -286,7 +299,7 @@ function ChatMarkdown({ text, cwd, isStreaming = false }: ChatMarkdownProps) {
         );
       },
     }),
-    [cwd, diffThemeName, isStreaming],
+    [codeThemeName, cwd, isStreaming],
   );
 
   return (

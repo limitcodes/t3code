@@ -9,27 +9,31 @@ import {
   PtySpawnError,
 } from "../Services/PTY";
 
-interface NodePtyExitLike {
-  readonly exitCode: number;
-  readonly signal?: number | null;
-}
+let didEnsureSpawnHelperExecutable = false;
+const NODE_PTY_UNAVAILABLE_MESSAGE =
+  "Terminal support is unavailable because the native node-pty module could not be loaded.";
 
-interface NodePtyDisposableLike {
+type NodePtyExitEvent = {
+  exitCode: number;
+  signal?: number | string;
+};
+
+type NodePtyDisposable = {
   dispose(): void;
-}
+};
 
-interface NodePtyProcessLike {
-  readonly pid: number;
+type NodePtyHandle = {
+  pid: number;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(signal?: string): void;
-  onData(callback: (data: string) => void): NodePtyDisposableLike;
-  onExit(callback: (event: NodePtyExitLike) => void): NodePtyDisposableLike;
-}
+  onData(callback: (data: string) => void): NodePtyDisposable;
+  onExit(callback: (event: NodePtyExitEvent) => void): NodePtyDisposable;
+};
 
-interface NodePtyModuleLike {
+type NodePtyModuleLike = {
   spawn(
-    file: string,
+    shell: string,
     args: string[],
     options: {
       cwd: string;
@@ -38,10 +42,8 @@ interface NodePtyModuleLike {
       env: NodeJS.ProcessEnv;
       name: string;
     },
-  ): NodePtyProcessLike;
-}
-
-let didEnsureSpawnHelperExecutable = false;
+  ): NodePtyHandle;
+};
 
 const resolveNodePtySpawnHelperPath = Effect.gen(function* () {
   const requireForNodePty = createRequire(import.meta.url);
@@ -84,7 +86,7 @@ export const ensureNodePtySpawnHelperExecutable = Effect.fn(function* (explicitP
 });
 
 class NodePtyProcess implements PtyProcess {
-  constructor(private readonly process: NodePtyProcessLike) {}
+  constructor(private readonly process: NodePtyHandle) {}
 
   get pid(): number {
     return this.process.pid;
@@ -110,10 +112,10 @@ class NodePtyProcess implements PtyProcess {
   }
 
   onExit(callback: (event: PtyExitEvent) => void): () => void {
-    const disposable = this.process.onExit((event: NodePtyExitLike) => {
+    const disposable = this.process.onExit((event: NodePtyExitEvent) => {
       callback({
         exitCode: event.exitCode,
-        signal: event.signal ?? null,
+        signal: typeof event.signal === "number" ? event.signal : null,
       });
     });
     return () => {
@@ -138,16 +140,16 @@ function createUnavailablePtyAdapter(cause: unknown): PtyAdapterShape {
 export const NodePtyAdapterLive = Layer.effect(
   PtyAdapter,
   Effect.gen(function* () {
+    const requireForNodePty = createRequire(import.meta.url);
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const requireForNodePty = createRequire(import.meta.url);
 
     const nodePty = yield* Effect.try({
       try: () => requireForNodePty("node-pty") as NodePtyModuleLike,
       catch: (cause) =>
         new PtySpawnError({
           adapter: "node-pty",
-          message: "Failed to load node-pty module.",
+          message: "Failed to load node-pty.",
           cause,
         }),
     }).pipe(
@@ -173,6 +175,13 @@ export const NodePtyAdapterLive = Layer.effect(
 
     return {
       spawn: Effect.fn(function* (input) {
+        if (!nodePty) {
+          return yield* new PtySpawnError({
+            adapter: "node-pty",
+            message: NODE_PTY_UNAVAILABLE_MESSAGE,
+          });
+        }
+
         yield* ensureNodePtySpawnHelperExecutableCached;
         const ptyProcess = yield* Effect.try({
           try: () =>

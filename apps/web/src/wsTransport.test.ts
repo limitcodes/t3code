@@ -130,6 +130,49 @@ describe("WsTransport", () => {
     transport.dispose();
   });
 
+  it("flushes requests queued before the socket opens", async () => {
+    const transport = new WsTransport("ws://localhost:3020");
+    const socket = getSocket();
+
+    const requestPromise = transport.request("projects.list");
+    expect(socket.sent).toHaveLength(0);
+
+    socket.open();
+    const sent = socket.sent.at(-1);
+    if (!sent) {
+      throw new Error("Expected queued request envelope to be sent after open");
+    }
+
+    const requestEnvelope = JSON.parse(sent) as { id: string };
+    socket.serverMessage(
+      JSON.stringify({
+        id: requestEnvelope.id,
+        result: { projects: ["queued"] },
+      }),
+    );
+
+    await expect(requestPromise).resolves.toEqual({ projects: ["queued"] });
+
+    transport.dispose();
+  });
+
+  it("rejects in-flight requests immediately when the socket closes", async () => {
+    const transport = new WsTransport("ws://localhost:3020");
+    const socket = getSocket();
+    socket.open();
+
+    const requestPromise = transport.request("projects.list");
+    expect(socket.sent).toHaveLength(1);
+
+    socket.close();
+
+    await expect(requestPromise).rejects.toThrow(
+      "WebSocket disconnected before a response was received",
+    );
+
+    transport.dispose();
+  });
+
   it("drops malformed envelopes without crashing transport", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const transport = new WsTransport("ws://localhost:3020");

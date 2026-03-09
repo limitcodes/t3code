@@ -153,6 +153,27 @@ function readKimiConfigModelIds(model?: string): ReadonlyArray<string> {
   );
 }
 
+export function buildKimiCliEnv(input: {
+  readonly apiKey?: string;
+  readonly model?: string;
+  readonly baseEnv?: NodeJS.ProcessEnv;
+}): NodeJS.ProcessEnv {
+  const env = { ...(input.baseEnv ?? process.env) };
+  const apiKey = input.apiKey?.trim();
+  const model = input.model?.trim();
+
+  if (apiKey) {
+    env.KIMI_API_KEY = apiKey;
+    env.KIMI_BASE_URL = KIMI_CODE_BASE_URL;
+  }
+
+  if (model) {
+    env.KIMI_MODEL_NAME = model;
+  }
+
+  return env;
+}
+
 export function buildKimiApiKeyConfig(input: { readonly apiKey: string; readonly model?: string }) {
   const modelIds = readKimiConfigModelIds(input.model);
   const defaultModel = input.model?.trim() || KIMI_DEFAULT_MODEL_ID;
@@ -843,10 +864,14 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
       ...(input.model !== undefined ? { model: input.model } : {}),
       ...(tempConfig ? { configFilePath: tempConfig.filePath } : {}),
     });
+    const env = buildKimiCliEnv({
+      ...(kimiApiKey ? { apiKey: kimiApiKey } : {}),
+      ...(input.model !== undefined ? { model: input.model } : {}),
+    });
 
     const child = spawn(kimiBinaryPath, args, {
       cwd: resolvedCwd,
-      env: process.env,
+      env,
       stdio: ["pipe", "pipe", "pipe"],
       shell: process.platform === "win32",
     });

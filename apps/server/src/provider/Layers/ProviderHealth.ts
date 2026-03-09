@@ -16,6 +16,11 @@ import type {
 import { Effect, Layer, Option, Result, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
+import {
+  formatCodexCliUpgradeMessage,
+  isCodexCliVersionSupported,
+  parseCodexCliVersion,
+} from "../codexCliVersion";
 import { ProviderHealth, type ProviderHealthShape } from "../Services/ProviderHealth";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
@@ -41,15 +46,15 @@ function nonEmptyTrimmed(value: string | undefined): string | undefined {
 function isCommandMissingCause(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const lower = error.message.toLowerCase();
-    return (
-      lower.includes("command not found:") ||
-      lower.includes("spawn codex enoent") ||
-      lower.includes("spawn copilot enoent") ||
-      lower.includes("spawn kimi enoent") ||
-      lower.includes("spawn droid enoent") ||
-      lower.includes("enoent") ||
-      lower.includes("notfound")
-    );
+  return (
+    lower.includes("command not found:") ||
+    lower.includes("spawn codex enoent") ||
+    lower.includes("spawn copilot enoent") ||
+    lower.includes("spawn kimi enoent") ||
+    lower.includes("spawn droid enoent") ||
+    lower.includes("enoent") ||
+    lower.includes("notfound")
+  );
 }
 
 function detailFromResult(
@@ -177,6 +182,16 @@ const collectStreamAsString = <E>(stream: Stream.Stream<Uint8Array, E>): Effect.
     (acc, chunk) => acc + new TextDecoder().decode(chunk),
   );
 
+function readCopilotAuthToken(): string | undefined {
+  for (const key of ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] as const) {
+    const value = process.env[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
 const runCliCommand = (commandName: string, args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -258,6 +273,18 @@ export const checkCodexProviderStatus: Effect.Effect<
     };
   }
 
+  const parsedVersion = parseCodexCliVersion(`${version.stdout}\n${version.stderr}`);
+  if (parsedVersion && !isCodexCliVersionSupported(parsedVersion)) {
+    return {
+      provider: CODEX_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: formatCodexCliUpgradeMessage(parsedVersion),
+    };
+  }
+
   // Probe 2: `codex login status` — is the user authenticated?
   const authProbe = yield* runCodexCommand(["login", "status"]).pipe(
     Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
@@ -301,23 +328,12 @@ export const checkCodexProviderStatus: Effect.Effect<
   } satisfies ServerProviderStatus;
 });
 
-function readCopilotAuthEnvValue(): string | undefined {
-  for (const envKey of ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] as const) {
-    const value = process.env[envKey]?.trim();
-    if (value) {
-      return value;
-    }
-  }
-  return undefined;
-}
-
 export const checkCopilotProviderStatus: Effect.Effect<
   ServerProviderStatus,
   never,
   ChildProcessSpawner.ChildProcessSpawner
 > = Effect.gen(function* () {
   const checkedAt = new Date().toISOString();
-
   const versionProbe = yield* runCopilotCommand(["--version"]).pipe(
     Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
     Effect.result,
@@ -344,8 +360,7 @@ export const checkCopilotProviderStatus: Effect.Effect<
       available: false,
       authStatus: "unknown" as const,
       checkedAt,
-      message:
-        "GitHub Copilot CLI is installed but failed to run. Timed out while running command.",
+      message: "GitHub Copilot CLI is installed but failed to run. Timed out while running command.",
     };
   }
 
@@ -364,8 +379,8 @@ export const checkCopilotProviderStatus: Effect.Effect<
     };
   }
 
-  const envToken = readCopilotAuthEnvValue();
-  if (envToken?.startsWith("ghp_")) {
+  const authToken = readCopilotAuthToken();
+  if (authToken?.startsWith("ghp_")) {
     return {
       provider: COPILOT_PROVIDER,
       status: "error" as const,
@@ -377,14 +392,13 @@ export const checkCopilotProviderStatus: Effect.Effect<
     };
   }
 
-  if (envToken) {
+  if (authToken) {
     return {
       provider: COPILOT_PROVIDER,
       status: "ready" as const,
       available: true,
       authStatus: "authenticated" as const,
       checkedAt,
-      message: "GitHub Copilot CLI authentication is configured via environment variable.",
     };
   }
 

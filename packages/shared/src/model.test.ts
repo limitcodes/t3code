@@ -66,12 +66,6 @@ describe("resolveModelSlug", () => {
     expect(getModelOptions("kimi")).toEqual(MODEL_OPTIONS_BY_PROVIDER.kimi);
     expect(resolveModelSlug("kimi-for-coding", "kimi")).toBe("kimi-for-coding");
   });
-
-  it("returns provider-specific defaults and catalogs for droid", () => {
-    expect(getDefaultModel("droid")).toBe(DEFAULT_MODEL_BY_PROVIDER.droid);
-    expect(getModelOptions("droid")).toEqual(MODEL_OPTIONS_BY_PROVIDER.droid);
-    expect(resolveModelSlug("claude-opus-4-6", "droid")).toBe("claude-opus-4-6");
-  });
 });
 
 describe("getReasoningEffortOptions", () => {
@@ -83,8 +77,7 @@ describe("getReasoningEffortOptions", () => {
 describe("getDefaultReasoningEffort", () => {
   it("returns provider-scoped defaults", () => {
     expect(getDefaultReasoningEffort("codex")).toBe("high");
-    expect(getDefaultReasoningEffort("copilot")).toBeNull();
     expect(getDefaultReasoningEffort("kimi")).toBeNull();
-    expect(getDefaultReasoningEffort("droid")).toBeNull();
+    expect(getDefaultReasoningEffort("copilot")).toBe("high");
   });
 });

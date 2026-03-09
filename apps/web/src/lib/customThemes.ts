@@ -19,6 +19,7 @@ export const APPLIED_CUSTOM_THEME_IDS = [
   "github-dark-high-contrast",
   "nord",
   "visual-studio-2017-dark",
+  "t3-chat-theme",
 ] as const;
 
 export type AppliedCustomThemeId = (typeof APPLIED_CUSTOM_THEME_IDS)[number];
@@ -27,7 +28,7 @@ export interface AppliedCustomTheme {
   id: AppliedCustomThemeId;
   label: string;
   description: string;
-  family: "catppuccin" | "github" | "nord" | "visual-studio";
+  family: "catppuccin" | "github" | "nord" | "visual-studio" | "t3";
   appearance: ThemeAppearance;
   dataTheme: AppliedCustomThemeId;
   diffThemeName: SupportedHighlighterThemeName;
@@ -105,6 +106,15 @@ export const APPLIED_CUSTOM_THEMES = {
     appearance: "dark",
     dataTheme: "visual-studio-2017-dark",
     diffThemeName: "dark-plus",
+  },
+  "t3-chat-theme": {
+    id: "t3-chat-theme",
+    label: "T3 Chat Theme",
+    description: "A deep plum chat-first palette inspired by T3 Chat.",
+    family: "t3",
+    appearance: "dark",
+    dataTheme: "t3-chat-theme",
+    diffThemeName: "catppuccin-mocha",
   },
 } as const satisfies Record<AppliedCustomThemeId, AppliedCustomTheme>;
 

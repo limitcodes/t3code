@@ -825,9 +825,9 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
         if (threadId.length === 0) {
           return;
         }
+        const normalizedModel = normalizeModelSlug(model) ?? null;
         set((state) => {
           const existing = state.draftsByThreadId[threadId];
-          const normalizedModel = normalizeModelSlug(model, existing?.provider ?? "codex") ?? null;
           if (!existing && normalizedModel === null) {
             return state;
           }
@@ -1228,7 +1228,6 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
             draft.runtimeMode === null &&
             draft.interactionMode === null &&
             draft.effort === null &&
-            draft.droidMode === null &&
             draft.codexFastMode === false
           ) {
             continue;

@@ -9,6 +9,7 @@
 import http from "node:http";
 import type { Duplex } from "node:stream";
 
+import type * as acp from "@agentclientprotocol/sdk";
 import Mime from "@effect/platform-node/Mime";
 import {
   CommandId,
@@ -23,6 +24,8 @@ import {
   TerminalEvent,
   WS_CHANNELS,
   WS_METHODS,
+  type ServerCopilotReasoningProbe,
+  type ServerCopilotReasoningProbeInput,
   WebSocketRequest,
   WsPush,
   WsResponse,
@@ -73,6 +76,8 @@ import {
 import { parseBase64DataUrl } from "./imageMime.ts";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
 import { expandHomePath } from "./os-jank.ts";
+import { createCopilotUsageReader } from "./copilotUsage.ts";
+import { CopilotAcpManager, readCopilotReasoningEffortSelector } from "./copilotAcpManager.ts";
 
 /**
  * ServerShape - Service API for server lifecycle control.
@@ -107,14 +112,101 @@ const isServerNotRunningError = (error: unknown): boolean => {
 };
 
 function rejectUpgrade(socket: Duplex, statusCode: number, message: string): void {
+  const statusText =
+    statusCode === 401 ? "Unauthorized" : statusCode === 403 ? "Forbidden" : "Bad Request";
   socket.end(
-    `HTTP/1.1 ${statusCode} ${statusCode === 401 ? "Unauthorized" : "Bad Request"}\r\n` +
+    `HTTP/1.1 ${statusCode} ${statusText}\r\n` +
       "Connection: close\r\n" +
       "Content-Type: text/plain\r\n" +
       `Content-Length: ${Buffer.byteLength(message)}\r\n` +
       "\r\n" +
       message,
   );
+}
+
+function buildAllowedWebSocketOrigins(params: {
+  requestHost: string | undefined;
+  devUrl: URL | undefined;
+}): ReadonlySet<string> {
+  const origins = new Set<string>();
+
+  const addOrigin = (value: string | URL | undefined) => {
+    if (!value) return;
+    try {
+      const origin = typeof value === "string" ? new URL(value).origin : value.origin;
+      origins.add(origin);
+    } catch {
+      // Ignore malformed origins here and reject them during handshake validation.
+    }
+  };
+
+  if (params.requestHost) {
+    addOrigin(`http://${params.requestHost}`);
+    addOrigin(`https://${params.requestHost}`);
+  }
+  addOrigin(params.devUrl);
+
+  return origins;
+}
+
+function isAllowedWebSocketOrigin(params: {
+  originHeader: string | undefined;
+  allowedOrigins: ReadonlySet<string>;
+  allowMissingOrigin: boolean;
+  allowNullOrigin: boolean;
+}): boolean {
+  const { originHeader, allowedOrigins, allowMissingOrigin, allowNullOrigin } = params;
+  if (!originHeader) {
+    return allowMissingOrigin;
+  }
+  if (originHeader === "null") {
+    return allowNullOrigin;
+  }
+
+  try {
+    return allowedOrigins.has(new URL(originHeader).origin);
+  } catch {
+    return false;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function readStableCopilotReasoningSelector(
+  manager: CopilotAcpManager,
+  threadId: ThreadId,
+): Promise<ReturnType<typeof readCopilotReasoningEffortSelector>> {
+  const deadline = Date.now() + 2_500;
+  let lastSignature: string | null = null;
+  let stableSince = Date.now();
+  let latestSelector: ReturnType<typeof readCopilotReasoningEffortSelector> = null;
+
+  while (Date.now() < deadline) {
+    const configuration = await manager.getSessionConfiguration(threadId);
+    latestSelector = readCopilotReasoningEffortSelector(
+      configuration.configOptions as ReadonlyArray<acp.SessionConfigOption>,
+    );
+    const signature = latestSelector
+      ? `${latestSelector.currentValue ?? ""}:${latestSelector.options.join(",")}`
+      : "missing";
+
+    if (signature !== lastSignature) {
+      lastSignature = signature;
+      stableSince = Date.now();
+    }
+
+    if (latestSelector && Date.now() - stableSince >= 250) {
+      return latestSelector;
+    }
+
+    await sleep(100);
+  }
+
+  return latestSelector;
 }
 
 function websocketRawToString(raw: unknown): string | null {
@@ -249,7 +341,6 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     autoBootstrapProjectFromCwd,
   } = serverConfig;
   const availableEditors = resolveAvailableEditors();
-
   const gitManager = yield* GitManager;
   const terminalManager = yield* TerminalManager;
   const keybindingsManager = yield* Keybindings;
@@ -269,6 +360,59 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   );
 
   const providerStatuses = yield* providerHealth.getStatuses;
+  const readCopilotUsage = createCopilotUsageReader();
+
+  async function probeCopilotReasoning(
+    input: ServerCopilotReasoningProbeInput,
+  ): Promise<ServerCopilotReasoningProbe> {
+    const manager = new CopilotAcpManager();
+    const threadId = ThreadId.makeUnsafe(`copilot-probe-${crypto.randomUUID()}`);
+    const fetchedAt = new Date().toISOString();
+
+    try {
+      await manager.startSession({
+        threadId,
+        provider: "copilot",
+        cwd,
+        model: input.model,
+        runtimeMode: "approval-required",
+        providerOptions: input.binaryPath
+          ? { copilot: { binaryPath: input.binaryPath } }
+          : undefined,
+      });
+
+      const selector = await readStableCopilotReasoningSelector(manager, threadId);
+      if (!selector) {
+        return {
+          status: "unavailable",
+          fetchedAt,
+          model: input.model,
+          message: "GitHub Copilot CLI did not expose a reasoning-effort selector for this model.",
+        };
+      }
+
+      return {
+        status: "supported",
+        fetchedAt,
+        model: input.model,
+        options: selector.options,
+        ...(selector.currentValue ? { currentValue: selector.currentValue } : {}),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message.trim() : String(error).trim();
+      return {
+        status: "unavailable",
+        fetchedAt,
+        model: input.model,
+        message:
+          message.length > 0
+            ? message
+            : "Failed to probe GitHub Copilot reasoning options for this model.",
+      };
+    } finally {
+      await manager.stopSession(threadId).catch(() => undefined);
+    }
+  }
 
   const clients = yield* Ref.make(new Set<WebSocket>());
   const logger = createLogger("ws");
@@ -418,6 +562,61 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         attachments: normalizedAttachments,
       },
     } satisfies OrchestrationCommand;
+  });
+
+  const isWithinAllowedRoot = (requestedPath: string, rootPath: string): boolean => {
+    const relativeToRoot = toPosixRelativePath(path.relative(rootPath, requestedPath));
+    return (
+      relativeToRoot.length === 0 ||
+      relativeToRoot === "." ||
+      (!relativeToRoot.startsWith("../") &&
+        relativeToRoot !== ".." &&
+        !path.isAbsolute(relativeToRoot))
+    );
+  };
+
+  const readAuthorizedWorkspaceRoots = Effect.fnUntraced(function* () {
+    const snapshot = yield* projectionReadModelQuery.getSnapshot();
+    const roots = new Set<string>([path.resolve(cwd)]);
+    for (const project of snapshot.projects) {
+      if (project.deletedAt === null) {
+        roots.add(path.resolve(project.workspaceRoot));
+      }
+    }
+    for (const thread of snapshot.threads) {
+      if (thread.deletedAt === null && thread.worktreePath) {
+        roots.add(path.resolve(thread.worktreePath));
+      }
+    }
+    return roots;
+  });
+
+  const authorizePath = Effect.fnUntraced(function* (input: {
+    readonly requestedPath: string;
+    readonly operation: string;
+    readonly extraRoots?: ReadonlyArray<string>;
+    readonly exactPaths?: ReadonlyArray<string>;
+  }) {
+    const requestedPath = path.resolve(yield* expandHomePath(input.requestedPath.trim()));
+    const exactPaths = (input.exactPaths ?? []).map((entry) => path.resolve(entry));
+    if (exactPaths.includes(requestedPath)) {
+      return requestedPath;
+    }
+
+    const roots = yield* readAuthorizedWorkspaceRoots();
+    for (const extraRoot of input.extraRoots ?? []) {
+      roots.add(path.resolve(extraRoot));
+    }
+
+    for (const root of roots) {
+      if (isWithinAllowedRoot(requestedPath, root)) {
+        return requestedPath;
+      }
+    }
+
+    return yield* new RouteRequestError({
+      message: `${input.operation} is only allowed inside the current project, worktree, or trusted app paths.`,
+    });
   });
 
   // HTTP server — serves static files or redirects to Vite dev server
@@ -761,6 +960,10 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
       case WS_METHODS.projectsSearchEntries: {
         const body = stripRequestTag(request.body);
+        yield* authorizePath({
+          requestedPath: body.cwd,
+          operation: "Project search",
+        });
         return yield* Effect.tryPromise({
           try: () => searchWorkspaceEntries(body),
           catch: (cause) =>
@@ -772,8 +975,12 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
       case WS_METHODS.projectsWriteFile: {
         const body = stripRequestTag(request.body);
+        const authorizedWorkspaceRoot = yield* authorizePath({
+          requestedPath: body.cwd,
+          operation: "Project file write",
+        });
         const target = yield* resolveWorkspaceWritePath({
-          workspaceRoot: body.cwd,
+          workspaceRoot: authorizedWorkspaceRoot,
           relativePath: body.relativePath,
           path,
         });
@@ -798,57 +1005,130 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
       case WS_METHODS.shellOpenInEditor: {
         const body = stripRequestTag(request.body);
-        return yield* openInEditor(body);
+        return yield* openInEditor({
+          ...body,
+          cwd: yield* authorizePath({
+            requestedPath: body.cwd,
+            operation: "Open in editor",
+            extraRoots: [serverConfig.stateDir],
+            exactPaths: [keybindingsConfigPath],
+          }),
+        });
       }
 
       case WS_METHODS.gitStatus: {
         const body = stripRequestTag(request.body);
-        return yield* gitManager.status(body);
+        return yield* gitManager.status({
+          ...body,
+          cwd: yield* authorizePath({
+            requestedPath: body.cwd,
+            operation: "Git status",
+          }),
+        });
       }
 
       case WS_METHODS.gitPull: {
         const body = stripRequestTag(request.body);
-        return yield* git.pullCurrentBranch(body.cwd);
+        return yield* git.pullCurrentBranch(
+          yield* authorizePath({
+            requestedPath: body.cwd,
+            operation: "Git pull",
+          }),
+        );
       }
 
       case WS_METHODS.gitRunStackedAction: {
         const body = stripRequestTag(request.body);
-        return yield* gitManager.runStackedAction(body);
+        return yield* gitManager.runStackedAction({
+          ...body,
+          cwd: yield* authorizePath({
+            requestedPath: body.cwd,
+            operation: "Git action",
+          }),
+        });
       }
 
       case WS_METHODS.gitListBranches: {
         const body = stripRequestTag(request.body);
-        return yield* git.listBranches(body);
+        return yield* git.listBranches({
+          ...body,
+          cwd: yield* authorizePath({
+            requestedPath: body.cwd,
+            operation: "Git branch listing",
+          }),
+        });
       }
 
       case WS_METHODS.gitCreateWorktree: {
         const body = stripRequestTag(request.body);
-        return yield* git.createWorktree(body);
+        return yield* git.createWorktree({
+          ...body,
+          cwd: yield* authorizePath({
+            requestedPath: body.cwd,
+            operation: "Git worktree creation",
+          }),
+        });
       }
 
       case WS_METHODS.gitRemoveWorktree: {
         const body = stripRequestTag(request.body);
-        return yield* git.removeWorktree(body);
+        return yield* git.removeWorktree({
+          ...body,
+          cwd: yield* authorizePath({
+            requestedPath: body.cwd,
+            operation: "Git worktree removal",
+          }),
+          path: yield* authorizePath({
+            requestedPath: body.path,
+            operation: "Git worktree removal",
+          }),
+        });
       }
 
       case WS_METHODS.gitCreateBranch: {
         const body = stripRequestTag(request.body);
-        return yield* git.createBranch(body);
+        return yield* git.createBranch({
+          ...body,
+          cwd: yield* authorizePath({
+            requestedPath: body.cwd,
+            operation: "Git branch creation",
+          }),
+        });
       }
 
       case WS_METHODS.gitCheckout: {
         const body = stripRequestTag(request.body);
-        return yield* Effect.scoped(git.checkoutBranch(body));
+        return yield* Effect.scoped(
+          git.checkoutBranch({
+            ...body,
+            cwd: yield* authorizePath({
+              requestedPath: body.cwd,
+              operation: "Git checkout",
+            }),
+          }),
+        );
       }
 
       case WS_METHODS.gitInit: {
         const body = stripRequestTag(request.body);
-        return yield* git.initRepo(body);
+        return yield* git.initRepo({
+          ...body,
+          cwd: yield* authorizePath({
+            requestedPath: body.cwd,
+            operation: "Git init",
+          }),
+        });
       }
 
       case WS_METHODS.terminalOpen: {
         const body = stripRequestTag(request.body);
-        return yield* terminalManager.open(body);
+        return yield* terminalManager.open({
+          ...body,
+          cwd: yield* authorizePath({
+            requestedPath: body.cwd,
+            operation: "Terminal open",
+          }),
+        });
       }
 
       case WS_METHODS.terminalWrite: {
@@ -868,7 +1148,13 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
       case WS_METHODS.terminalRestart: {
         const body = stripRequestTag(request.body);
-        return yield* terminalManager.restart(body);
+        return yield* terminalManager.restart({
+          ...body,
+          cwd: yield* authorizePath({
+            requestedPath: body.cwd,
+            operation: "Terminal restart",
+          }),
+        });
       }
 
       case WS_METHODS.terminalClose: {
@@ -886,6 +1172,14 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           providers: providerStatuses,
           availableEditors,
         };
+
+      case WS_METHODS.serverGetCopilotUsage:
+        return yield* Effect.tryPromise(() => readCopilotUsage());
+
+      case WS_METHODS.serverProbeCopilotReasoning: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise(() => probeCopilotReasoning(body));
+      }
 
       case WS_METHODS.serverUpsertKeybinding: {
         const body = stripRequestTag(request.body);
@@ -946,6 +1240,12 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   httpServer.on("upgrade", (request, socket, head) => {
     socket.on("error", () => {}); // Prevent unhandled `EPIPE`/`ECONNRESET` from crashing the process if the client disconnects mid-handshake
 
+    const originHeader =
+      typeof request.headers.origin === "string" ? request.headers.origin : undefined;
+    const allowedWebSocketOrigins = buildAllowedWebSocketOrigins({
+      requestHost: request.headers.host,
+      devUrl,
+    });
     if (authToken) {
       let providedToken: string | null = null;
       try {
@@ -960,6 +1260,18 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         rejectUpgrade(socket, 401, "Unauthorized WebSocket connection");
         return;
       }
+    }
+
+    if (
+      !isAllowedWebSocketOrigin({
+        originHeader: request.headers.origin,
+        allowedOrigins: allowedWebSocketOrigins,
+        allowMissingOrigin: Boolean(authToken),
+        allowNullOrigin: serverConfig.mode === "desktop",
+      })
+    ) {
+      rejectUpgrade(socket, 403, "Forbidden WebSocket origin");
+      return;
     }
 
     wss.handleUpgrade(request, socket, head, (ws) => {

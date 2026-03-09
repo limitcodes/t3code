@@ -409,6 +409,49 @@
   --warning-foreground: #d7ba7d;
 }
 
+:root[data-theme="t3-chat-theme"] {
+  color-scheme: dark;
+  --background: #121016;
+  --foreground: #ffffff;
+  --card: #1a1821;
+  --card-foreground: #ffffff;
+  --popover: #1a1821;
+  --popover-foreground: #ffffff;
+  --primary: #c2175b;
+  --primary-foreground: #ffffff;
+  --secondary: #24202d;
+  --secondary-foreground: #ffffff;
+  --muted: #24202d;
+  --muted-foreground: #a5a1b0;
+  --accent: #a31f59;
+  --accent-foreground: #ffffff;
+  --destructive: #e06c75;
+  --border: #302b3c;
+  --input: #302b3c;
+  --ring: #c2175b;
+  --destructive-foreground: #ffffff;
+  --info: #61afef;
+  --info-foreground: #61afef;
+  --success: #98c379;
+  --success-foreground: #98c379;
+  --warning: #ffb454;
+  --warning-foreground: #fff0cf;
+}
+
+:root[data-theme="t3-chat-theme"] body {
+  background-image:
+    radial-gradient(circle at top, rgba(194, 23, 91, 0.2), transparent 34%),
+    radial-gradient(circle at 14% 0%, rgba(163, 31, 89, 0.16), transparent 24%),
+    linear-gradient(180deg, #1a1821 0%, #121016 42%, #121016 100%);
+  background-attachment: fixed;
+}
+
+:root[data-theme="t3-chat-theme"] [data-chat-composer-surface="true"] {
+  background: #24202d;
+  border-color: #302b3c;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
 body {
   font-family:
     "DM Sans",
@@ -680,8 +723,13 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown .chat-markdown-shiki .shiki {
-  background: color-mix(in srgb, var(--muted) 78%, var(--background)) !important;
   font-family: var(--font-code-snippet) !important;
+}
+
+:root[data-theme="t3-chat-theme"] .chat-markdown .chat-markdown-shiki .shiki {
+  background: #1a1821 !important;
+  border-color: #302b3c;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .chat-markdown .chat-markdown-shiki .shiki code {

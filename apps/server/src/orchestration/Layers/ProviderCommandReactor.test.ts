@@ -96,10 +96,7 @@ describe("ProviderCommandReactor", () => {
         typeof input === "object" &&
         input !== null &&
         "provider" in input &&
-        (input.provider === "codex" ||
-          input.provider === "copilot" ||
-          input.provider === "kimi" ||
-          input.provider === "droid")
+        (input.provider === "codex" || input.provider === "copilot" || input.provider === "kimi")
           ? input.provider
           : "codex";
       const resumeCursor =
@@ -345,45 +342,6 @@ describe("ProviderCommandReactor", () => {
         codex: {
           reasoningEffort: "high",
           fastMode: true,
-        },
-      },
-    });
-  });
-
-  it("forwards provider start options through session start", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.makeUnsafe("cmd-turn-start-provider-options"),
-        threadId: ThreadId.makeUnsafe("thread-1"),
-        message: {
-          messageId: asMessageId("user-message-provider-options"),
-          role: "user",
-          text: "hello provider options",
-          attachments: [],
-        },
-        provider: "codex",
-        providerOptions: {
-          codex: {
-            binaryPath: "/tmp/custom-codex",
-            homePath: "/tmp/.codex-custom",
-          },
-        },
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: now,
-      }),
-    );
-
-    await waitFor(() => harness.startSession.mock.calls.length === 1);
-    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
-      providerOptions: {
-        codex: {
-          binaryPath: "/tmp/custom-codex",
-          homePath: "/tmp/.codex-custom",
         },
       },
     });

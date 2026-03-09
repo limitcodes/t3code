@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildKimiApiKeyConfig,
+  buildKimiCliEnv,
   buildKimiCliArgs,
   isKimiModelAvailable,
   isKimiLoginProbeUnauthenticated,
@@ -61,6 +62,40 @@ describe("kimiAcpManager model availability", () => {
       "kimi-for-coding",
       "acp",
     ]);
+  });
+
+  it("overrides inherited Kimi env vars with the selected model and API key", () => {
+    expect(
+      buildKimiCliEnv({
+        apiKey: "sk-kimi-fresh",
+        model: "kimi-for-coding",
+        baseEnv: {
+          PATH: "/usr/bin",
+          KIMI_API_KEY: "sk-kimi-stale",
+          KIMI_BASE_URL: "https://api.example.invalid",
+          KIMI_MODEL_NAME: "kimi-stale-model",
+        },
+      }),
+    ).toMatchObject({
+      PATH: "/usr/bin",
+      KIMI_API_KEY: "sk-kimi-fresh",
+      KIMI_BASE_URL: "https://api.kimi.com/coding/v1",
+      KIMI_MODEL_NAME: "kimi-for-coding",
+    });
+  });
+
+  it("preserves unrelated env vars when no Kimi overrides are provided", () => {
+    expect(
+      buildKimiCliEnv({
+        baseEnv: {
+          PATH: "/usr/bin",
+          HOME: "/tmp/home",
+        },
+      }),
+    ).toEqual({
+      PATH: "/usr/bin",
+      HOME: "/tmp/home",
+    });
   });
 
   it("builds a Kimi config from an API key with search and fetch services", () => {

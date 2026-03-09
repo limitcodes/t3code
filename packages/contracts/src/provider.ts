@@ -20,6 +20,7 @@ import {
   ProviderRequestKind,
   ProviderSandboxMode,
   ProviderServiceTier,
+  ProviderStartOptions,
   ProviderUserInputAnswers,
   RuntimeMode,
 } from "./orchestration";
@@ -47,32 +48,6 @@ export const ProviderSession = Schema.Struct({
   lastError: Schema.optional(TrimmedNonEmptyStringSchema),
 });
 export type ProviderSession = typeof ProviderSession.Type;
-
-const CodexProviderStartOptions = Schema.Struct({
-  binaryPath: Schema.optional(TrimmedNonEmptyStringSchema),
-  homePath: Schema.optional(TrimmedNonEmptyStringSchema),
-});
-
-const CopilotProviderStartOptions = Schema.Struct({
-  binaryPath: Schema.optional(TrimmedNonEmptyStringSchema),
-});
-
-const KimiProviderStartOptions = Schema.Struct({
-  binaryPath: Schema.optional(TrimmedNonEmptyStringSchema),
-  apiKey: Schema.optional(TrimmedNonEmptyStringSchema),
-});
-
-const DroidProviderStartOptions = Schema.Struct({
-  binaryPath: Schema.optional(TrimmedNonEmptyStringSchema),
-  apiKey: Schema.optional(TrimmedNonEmptyStringSchema),
-});
-
-const ProviderStartOptions = Schema.Struct({
-  codex: Schema.optional(CodexProviderStartOptions),
-  copilot: Schema.optional(CopilotProviderStartOptions),
-  kimi: Schema.optional(KimiProviderStartOptions),
-  droid: Schema.optional(DroidProviderStartOptions),
-});
 
 export const ProviderSessionStartInput = Schema.Struct({
   threadId: ThreadId,
