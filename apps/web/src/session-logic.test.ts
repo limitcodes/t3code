@@ -798,8 +798,6 @@ describe("PROVIDER_OPTIONS", () => {
     const cursor = PROVIDER_OPTIONS.find((option) => option.value === "cursor");
     expect(PROVIDER_OPTIONS).toEqual([
       { value: "codex", label: "Codex", available: true },
-      { value: "copilot", label: "GitHub Copilot", available: true },
-      { value: "kimi", label: "Kimi Code", available: true },
       { value: "droid", label: "Droid", available: true },
       { value: "pi", label: "Pi", available: true },
       { value: "claudeCode", label: "Claude Code", available: false },

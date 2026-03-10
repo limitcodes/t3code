@@ -625,12 +625,10 @@ export const ProviderHealthLive = Layer.effect(
   ProviderHealth,
   Effect.gen(function* () {
     const codexStatus = yield* checkCodexProviderStatus;
-    const copilotStatus = yield* checkCopilotProviderStatus;
-    const kimiStatus = yield* checkKimiProviderStatus;
     const droidStatus = yield* checkDroidProviderStatus;
     const piStatus = yield* checkPiProviderStatus;
     return {
-      getStatuses: Effect.succeed([codexStatus, copilotStatus, kimiStatus, droidStatus, piStatus]),
+      getStatuses: Effect.succeed([codexStatus, droidStatus, piStatus]),
     } satisfies ProviderHealthShape;
   }),
 );
