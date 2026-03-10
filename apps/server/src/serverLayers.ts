@@ -22,11 +22,13 @@ import { makeCopilotAdapterLive } from "./provider/Layers/CopilotAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
 import { makeDroidAdapterLive } from "./provider/Layers/DroidAdapter";
 import { makeKimiAdapterLive } from "./provider/Layers/KimiAdapter";
+import { makePiAdapterLive } from "./provider/Layers/PiAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory";
 import { ProviderService } from "./provider/Services/ProviderService";
 import { makeEventNdjsonLogger } from "./provider/Layers/EventNdjsonLogger";
+import { PiRpcManager } from "./piRpcManager";
 
 import { TerminalManagerLive } from "./terminal/Layers/Manager";
 import { KeybindingsLive } from "./keybindings";
@@ -63,11 +65,16 @@ export function makeServerProviderLayer(): Layer.Layer<
     const copilotAdapterLayer = makeCopilotAdapterLive();
     const kimiAdapterLayer = makeKimiAdapterLive();
     const droidAdapterLayer = makeDroidAdapterLive();
+    const piAdapterLayer = makePiAdapterLive({
+      makeManager: () =>
+        new PiRpcManager(path.join(stateDir, "provider-sessions", "pi"), stateDir),
+    });
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(copilotAdapterLayer),
       Layer.provide(kimiAdapterLayer),
       Layer.provide(droidAdapterLayer),
+      Layer.provide(piAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
     return makeProviderServiceLive(

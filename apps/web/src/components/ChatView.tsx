@@ -54,6 +54,7 @@ import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import {
   serverConfigQueryOptions,
   serverCopilotReasoningProbeQueryOptions,
+  serverPiModelsProbeQueryOptions,
   serverCopilotUsageQueryOptions,
   serverQueryKeys,
 } from "~/lib/serverReactQuery";
@@ -188,6 +189,7 @@ import {
   Icon,
   OpenAI,
   OpenCodeIcon,
+  PiIcon,
   VisualStudioCode,
   Zed,
 } from "./Icons";
@@ -296,6 +298,7 @@ function buildProviderOptionsForDispatch(input: {
     readonly kimiApiKey: string;
     readonly droidBinaryPath: string;
     readonly droidApiKey: string;
+    readonly piBinaryPath: string;
   };
 }): ProviderStartOptions | undefined {
   const codexBinaryPath = input.settings.codexBinaryPath.trim();
@@ -305,6 +308,7 @@ function buildProviderOptionsForDispatch(input: {
   const kimiApiKey = input.settings.kimiApiKey.trim();
   const droidBinaryPath = input.settings.droidBinaryPath.trim();
   const droidApiKey = input.settings.droidApiKey.trim();
+  const piBinaryPath = input.settings.piBinaryPath.trim();
 
   switch (input.provider) {
     case "codex":
@@ -342,6 +346,14 @@ function buildProviderOptionsForDispatch(input: {
             },
           }
         : undefined;
+    case "pi":
+      return piBinaryPath
+        ? {
+            pi: {
+              binaryPath: piBinaryPath,
+            },
+          }
+        : undefined;
     default:
       return undefined;
   }
@@ -354,6 +366,7 @@ function getCustomModelsForProvider(
     readonly customCopilotModels: readonly string[];
     readonly customKimiModels: readonly string[];
     readonly customDroidModels: readonly string[];
+    readonly customPiModels: readonly string[];
   },
 ): readonly string[] {
   switch (provider) {
@@ -365,6 +378,8 @@ function getCustomModelsForProvider(
       return settings.customKimiModels;
     case "droid":
       return settings.customDroidModels;
+    case "pi":
+      return settings.customPiModels;
     default:
       return settings.customCodexModels;
   }
@@ -950,6 +965,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
         threads.map((thread) => thread.activities),
         "droid",
       ),
+      pi: deriveConfiguredModelOptionsFromActivityGroups(
+        threads.map((thread) => thread.activities),
+        "pi",
+      ),
     }),
     [threads],
   );
@@ -957,9 +976,28 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => deriveConfiguredDroidModeStateFromActivityGroups(threads.map((thread) => thread.activities)),
     [threads],
   );
+  const piModelsProbeQuery = useQuery(
+    serverPiModelsProbeQueryOptions(
+      {
+        binaryPath: settings.piBinaryPath.trim().length > 0 ? settings.piBinaryPath.trim() : undefined,
+      },
+      configuredModelOptionsByProvider.pi.length === 0,
+    ),
+  );
+  const prefetchedPiModelOptions = useMemo(
+    () =>
+      piModelsProbeQuery.data?.status === "available"
+        ? piModelsProbeQuery.data.models.map((model) => ({
+            slug: model.modelId,
+            name: model.name,
+          }))
+        : [],
+    [piModelsProbeQuery.data],
+  );
   const modelOptionsByProvider = useMemo(
-    () => getCustomModelOptionsByProvider(settings, configuredModelOptionsByProvider),
-    [configuredModelOptionsByProvider, settings],
+    () =>
+      getCustomModelOptionsByProvider(settings, configuredModelOptionsByProvider, prefetchedPiModelOptions),
+    [configuredModelOptionsByProvider, prefetchedPiModelOptions, settings],
   );
   const customModelsForSelectedProvider = useMemo(
     () => modelOptionsByProvider[selectedProvider].map((option) => option.slug),
@@ -995,10 +1033,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider === "copilot" && copilotReasoningProbeQuery.data?.status === "supported"
       ? copilotReasoningProbeQuery.data.options
       : null;
-  const reasoningOptions =
-    selectedProvider === "copilot"
-      ? (probedCopilotReasoningOptions ?? [])
-      : getReasoningEffortOptions(selectedProvider);
+  const reasoningOptions = useMemo(
+    () =>
+      selectedProvider === "copilot"
+        ? (probedCopilotReasoningOptions ?? [])
+        : getReasoningEffortOptions(selectedProvider),
+    [probedCopilotReasoningOptions, selectedProvider],
+  );
   const supportsReasoningEffort = reasoningOptions.length > 0;
   const selectedEffort = useMemo(() => {
     if (reasoningOptions.length === 0) {
@@ -1540,7 +1581,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
         provider,
         model: slug,
         label: name,
-        description: `${providerLabel} · ${slug}`,
+        description:
+          provider === "pi"
+            ? formatModelDescriptionForDisplay(provider, slug)
+            : `${providerLabel} · ${slug}`,
         showFastBadge:
           provider === "codex" && shouldShowFastTierIcon(slug, selectedServiceTierSetting),
       }));
@@ -3488,11 +3532,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
       activeThread,
       lockedProvider,
       scheduleComposerFocus,
+      settings,
       setComposerDraftModel,
       setComposerDraftProvider,
-      settings.customCodexModels,
-      settings.customCopilotModels,
-      settings.customKimiModels,
     ],
   );
   const onEffortSelect = useCallback(
@@ -5947,8 +5989,10 @@ function getCustomModelOptionsByProvider(
     customCopilotModels: readonly string[];
     customKimiModels: readonly string[];
     customDroidModels: readonly string[];
+    customPiModels: readonly string[];
   },
   configuredModelsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>,
+  prefetchedPiModels: ReadonlyArray<{ slug: string; name: string }>,
 ): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
   const builtInAndCustomDroidOptions = getAppModelOptions("droid", settings.customDroidModels);
   const savedCustomDroidOptions = builtInAndCustomDroidOptions.filter((option) => option.isCustom);
@@ -5956,6 +6000,19 @@ function getCustomModelOptionsByProvider(
     configuredModelsByProvider.droid.length > 0
       ? mergeModelOptions(configuredModelsByProvider.droid, savedCustomDroidOptions)
       : builtInAndCustomDroidOptions;
+  const mergedPiOptions = mergeModelOptions(
+    mergeModelOptions(getAppModelOptions("pi", settings.customPiModels), configuredModelsByProvider.pi),
+    prefetchedPiModels,
+  );
+  const visiblePiOptions = mergedPiOptions.filter((option) => option.slug !== "auto");
+  const preferredPiOptions =
+    visiblePiOptions.length > 0
+      ? visiblePiOptions
+      : mergedPiOptions.map((option) =>
+          option.slug === "auto"
+            ? { slug: option.slug, name: "Auto" }
+            : { slug: option.slug, name: option.name },
+        );
 
   return {
     codex: getAppModelOptions("codex", settings.customCodexModels),
@@ -5968,6 +6025,7 @@ function getCustomModelOptionsByProvider(
       configuredModelsByProvider.kimi,
     ),
     droid: preferredDroidOptions,
+    pi: preferredPiOptions,
   };
 }
 
@@ -5976,6 +6034,7 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   copilot: GitHubIcon,
   kimi: KimiIcon,
   droid: DroidIcon,
+  pi: PiIcon,
   claudeCode: ClaudeAI,
   cursor: CursorIcon,
 };
@@ -6011,6 +6070,15 @@ function resolveModelForProviderPicker(
   }
 
   return null;
+}
+
+function formatModelDescriptionForDisplay(provider: ProviderKind, slug: string): string {
+  if (provider !== "pi") {
+    return slug;
+  }
+
+  const slashIndex = slug.indexOf("/");
+  return slashIndex > 0 && slashIndex < slug.length - 1 ? slug.slice(slashIndex + 1) : slug;
 }
 
 function formatCopilotQuotaDate(iso: string): string {
@@ -6135,7 +6203,8 @@ const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const copilotUsageQuery = useQuery(serverCopilotUsageQueryOptions(isMenuOpen));
   const selectedProviderOptions = props.modelOptionsByProvider[props.provider];
   const selectedModelLabel =
-    selectedProviderOptions.find((option) => option.slug === props.model)?.name ?? props.model;
+    selectedProviderOptions.find((option) => option.slug === props.model)?.name ??
+    (props.provider === "pi" && props.model === "auto" ? "Auto" : props.model);
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[props.provider];
 
   return (

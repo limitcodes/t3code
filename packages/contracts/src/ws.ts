@@ -31,7 +31,7 @@ import {
 import { KeybindingRule } from "./keybindings";
 import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
 import { OpenInEditorInput } from "./editor";
-import { ServerCopilotReasoningProbeInput } from "./server";
+import { ServerCopilotReasoningProbeInput, ServerPiModelsProbeInput } from "./server";
 
 // ── WebSocket RPC Method Names ───────────────────────────────────────
 
@@ -69,6 +69,7 @@ export const WS_METHODS = {
   serverGetConfig: "server.getConfig",
   serverGetCopilotUsage: "server.getCopilotUsage",
   serverProbeCopilotReasoning: "server.probeCopilotReasoning",
+  serverProbePiModels: "server.probePiModels",
   serverUpsertKeybinding: "server.upsertKeybinding",
 } as const;
 
@@ -133,6 +134,7 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.serverGetConfig, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverGetCopilotUsage, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverProbeCopilotReasoning, ServerCopilotReasoningProbeInput),
+  tagRequestBody(WS_METHODS.serverProbePiModels, ServerPiModelsProbeInput),
   tagRequestBody(WS_METHODS.serverUpsertKeybinding, KeybindingRule),
 ]);
 

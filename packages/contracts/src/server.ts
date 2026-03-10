@@ -108,6 +108,35 @@ export const ServerCopilotReasoningProbe = Schema.Union([
 ]);
 export type ServerCopilotReasoningProbe = typeof ServerCopilotReasoningProbe.Type;
 
+export const ServerPiModelsProbeInput = Schema.Struct({
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+});
+export type ServerPiModelsProbeInput = typeof ServerPiModelsProbeInput.Type;
+
+const ServerPiModel = Schema.Struct({
+  modelId: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+});
+export type ServerPiModel = typeof ServerPiModel.Type;
+
+const ServerPiModelsProbeAvailable = Schema.Struct({
+  status: Schema.Literal("available"),
+  fetchedAt: IsoDateTime,
+  models: Schema.Array(ServerPiModel),
+});
+
+const ServerPiModelsProbeUnavailable = Schema.Struct({
+  status: Schema.Literal("unavailable"),
+  fetchedAt: IsoDateTime,
+  message: TrimmedNonEmptyString,
+});
+
+export const ServerPiModelsProbe = Schema.Union([
+  ServerPiModelsProbeAvailable,
+  ServerPiModelsProbeUnavailable,
+]);
+export type ServerPiModelsProbe = typeof ServerPiModelsProbe.Type;
+
 export const ServerConfig = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   keybindingsConfigPath: TrimmedNonEmptyString,

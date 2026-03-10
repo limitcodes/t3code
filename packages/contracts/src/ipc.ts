@@ -24,6 +24,8 @@ import type {
   ServerConfig,
   ServerCopilotReasoningProbe,
   ServerCopilotReasoningProbeInput,
+  ServerPiModelsProbe,
+  ServerPiModelsProbeInput,
   ServerCopilotUsage,
 } from "./server";
 import type {
@@ -145,6 +147,7 @@ export interface NativeApi {
     probeCopilotReasoning: (
       input: ServerCopilotReasoningProbeInput,
     ) => Promise<ServerCopilotReasoningProbe>;
+    probePiModels: (input: ServerPiModelsProbeInput) => Promise<ServerPiModelsProbe>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
   };
   orchestration: {

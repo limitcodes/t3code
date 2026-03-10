@@ -47,6 +47,18 @@ export const DroidIcon: Icon = (props) => (
   </svg>
 );
 
+export const PiIcon: Icon = (props) => (
+  <svg {...props} viewBox="0 0 800 800" fill="none">
+    <path
+      fill="currentColor"
+      fillRule="evenodd"
+      d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29Z M282.65 282.65V400H400V282.65Z"
+      clipRule="evenodd"
+    />
+    <path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z" />
+  </svg>
+);
+
 export const VisualStudioCode: Icon = (props) => {
   const id = useId();
   const maskId = `${id}-vscode-a`;

@@ -187,6 +187,7 @@ export function createWsNativeApi(): NativeApi {
       getCopilotUsage: () => transport.request(WS_METHODS.serverGetCopilotUsage),
       probeCopilotReasoning: (input) =>
         transport.request(WS_METHODS.serverProbeCopilotReasoning, input),
+      probePiModels: (input) => transport.request(WS_METHODS.serverProbePiModels, input),
       upsertKeybinding: (input) => transport.request(WS_METHODS.serverUpsertKeybinding, input),
     },
     orchestration: {

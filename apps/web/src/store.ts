@@ -148,7 +148,8 @@ function toLegacyProvider(providerName: string | null): ProviderKind {
     providerName === "codex" ||
     providerName === "copilot" ||
     providerName === "kimi" ||
-    providerName === "droid"
+    providerName === "droid" ||
+    providerName === "pi"
   ) {
     return providerName;
   }
@@ -159,6 +160,7 @@ const CODEX_MODEL_SLUGS = new Set<string>(getModelOptions("codex").map((option) 
 const COPILOT_MODEL_SLUGS = new Set<string>(getModelOptions("copilot").map((option) => option.slug));
 const KIMI_MODEL_SLUGS = new Set<string>(getModelOptions("kimi").map((option) => option.slug));
 const DROID_MODEL_SLUGS = new Set<string>(getModelOptions("droid").map((option) => option.slug));
+const PI_MODEL_SLUGS = new Set<string>(getModelOptions("pi").map((option) => option.slug));
 
 function inferProviderForThreadModel(input: {
   readonly model: string;
@@ -168,9 +170,17 @@ function inferProviderForThreadModel(input: {
     input.sessionProviderName === "codex" ||
     input.sessionProviderName === "copilot" ||
     input.sessionProviderName === "kimi" ||
-    input.sessionProviderName === "droid"
+    input.sessionProviderName === "droid" ||
+    input.sessionProviderName === "pi"
   ) {
     return input.sessionProviderName;
+  }
+  const normalizedPi = normalizeModelSlug(input.model, "pi");
+  if (
+    (normalizedPi && PI_MODEL_SLUGS.has(normalizedPi)) ||
+    (typeof input.model === "string" && input.model.includes("/"))
+  ) {
+    return "pi";
   }
   const normalizedKimi = normalizeModelSlug(input.model, "kimi");
   if (normalizedKimi && KIMI_MODEL_SLUGS.has(normalizedKimi)) {

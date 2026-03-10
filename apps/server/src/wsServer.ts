@@ -26,6 +26,8 @@ import {
   WS_METHODS,
   type ServerCopilotReasoningProbe,
   type ServerCopilotReasoningProbeInput,
+  type ServerPiModelsProbe,
+  type ServerPiModelsProbeInput,
   WebSocketRequest,
   WsPush,
   WsResponse,
@@ -78,6 +80,7 @@ import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
 import { expandHomePath } from "./os-jank.ts";
 import { createCopilotUsageReader } from "./copilotUsage.ts";
 import { CopilotAcpManager, readCopilotReasoningEffortSelector } from "./copilotAcpManager.ts";
+import { fetchAvailablePiModels } from "./piModels.ts";
 
 /**
  * ServerShape - Service API for server lifecycle control.
@@ -411,6 +414,33 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       };
     } finally {
       await manager.stopSession(threadId).catch(() => undefined);
+    }
+  }
+
+  async function probePiModels(input: ServerPiModelsProbeInput): Promise<ServerPiModelsProbe> {
+    const fetchedAt = new Date().toISOString();
+
+    try {
+      const models = await fetchAvailablePiModels({
+        cwd,
+        ...(input.binaryPath ? { binaryPath: input.binaryPath } : {}),
+      });
+
+      return {
+        status: "available",
+        fetchedAt,
+        models: models.map((model) => ({
+          modelId: model.slug,
+          name: model.name,
+        })),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message.trim() : String(error).trim();
+      return {
+        status: "unavailable",
+        fetchedAt,
+        message: message.length > 0 ? message : "Failed to probe Pi models.",
+      };
     }
   }
 
@@ -1179,6 +1209,11 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.serverProbeCopilotReasoning: {
         const body = stripRequestTag(request.body);
         return yield* Effect.tryPromise(() => probeCopilotReasoning(body));
+      }
+
+      case WS_METHODS.serverProbePiModels: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise(() => probePiModels(body));
       }
 
       case WS_METHODS.serverUpsertKeybinding: {

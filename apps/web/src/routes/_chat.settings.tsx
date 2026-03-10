@@ -81,6 +81,14 @@ const MODEL_PROVIDER_SETTINGS: Array<{
     placeholder: "your-droid-model-id",
     example: "claude-opus-4-6",
   },
+  {
+    provider: "pi",
+    title: "Pi",
+    description:
+      "Save additional Pi model ids for the picker and `/model` command. Use `provider/model-id` when needed.",
+    placeholder: "google/gemini-2.5-pro",
+    example: "openai-codex/gpt-5.4",
+  },
 ] as const;
 
 const VISIBLE_CUSTOM_THEME_PRESET_LABELS = CUSTOM_THEME_OPTIONS.filter(
@@ -112,6 +120,8 @@ function getCustomModelsForProvider(
       return settings.customKimiModels;
     case "droid":
       return settings.customDroidModels;
+    case "pi":
+      return settings.customPiModels;
     default:
       return settings.customCodexModels;
   }
@@ -130,6 +140,8 @@ function getDefaultCustomModelsForProvider(
       return defaults.customKimiModels;
     case "droid":
       return defaults.customDroidModels;
+    case "pi":
+      return defaults.customPiModels;
     default:
       return defaults.customCodexModels;
   }
@@ -145,6 +157,8 @@ function patchCustomModels(provider: ProviderKind, models: string[]) {
       return { customKimiModels: models };
     case "droid":
       return { customDroidModels: models };
+    case "pi":
+      return { customPiModels: models };
     default:
       return { customCodexModels: models };
   }
@@ -171,6 +185,7 @@ function SettingsRouteView() {
     copilot: "",
     kimi: "",
     droid: "",
+    pi: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
@@ -183,6 +198,7 @@ function SettingsRouteView() {
   const kimiApiKey = settings.kimiApiKey;
   const droidBinaryPath = settings.droidBinaryPath;
   const droidApiKey = settings.droidApiKey;
+  const piBinaryPath = settings.piBinaryPath;
   const codexServiceTier = settings.codexServiceTier;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const selectedCustomTheme = CUSTOM_THEME_OPTIONS_BY_ID[customThemeId];
@@ -645,6 +661,50 @@ function SettingsRouteView() {
                     }
                   >
                     Reset droid overrides
+                  </Button>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">Pi CLI</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  These overrides apply to new Pi sessions. Install with{" "}
+                  <code>npm install -g @mariozechner/pi-coding-agent</code>. Pi manages its own
+                  auth and configured models, so T3 Code only needs the binary path override.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <label htmlFor="pi-binary-path" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">Pi binary path</span>
+                  <Input
+                    id="pi-binary-path"
+                    value={piBinaryPath}
+                    onChange={(event) => updateSettings({ piBinaryPath: event.target.value })}
+                    placeholder="pi"
+                    spellCheck={false}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Leave blank to use <code>pi</code> from your PATH.
+                  </span>
+                </label>
+
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <p>
+                    Binary source: <span className="font-medium text-foreground">{piBinaryPath || "PATH"}</span>
+                  </p>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() =>
+                      updateSettings({
+                        piBinaryPath: defaults.piBinaryPath,
+                      })
+                    }
+                  >
+                    Reset pi overrides
                   </Button>
                 </div>
               </div>

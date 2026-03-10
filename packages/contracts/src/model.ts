@@ -87,6 +87,7 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "kimi-k2.5", name: "Droid Core (Kimi K2.5)" },
     { slug: "minimax-m2.5", name: "Droid Core (MiniMax M2.5)" },
   ],
+  pi: [{ slug: "auto", name: "Pi Default" }],
 } as const satisfies Record<ProviderKind, readonly ModelOption[]>;
 export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
 
@@ -98,6 +99,7 @@ export const DEFAULT_MODEL_BY_PROVIDER = {
   copilot: "claude-sonnet-4.5",
   kimi: "kimi-for-coding",
   droid: "claude-opus-4-6",
+  pi: "auto",
 } as const satisfies Record<ProviderKind, ModelSlug>;
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
@@ -111,6 +113,7 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
   copilot: {},
   kimi: {},
   droid: {},
+  pi: {},
 } as const satisfies Record<ProviderKind, Record<string, ModelSlug>>;
 
 export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
@@ -118,6 +121,7 @@ export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
   copilot: COPILOT_REASONING_EFFORT_OPTIONS,
   kimi: [],
   droid: [],
+  pi: [],
 } as const satisfies Record<ProviderKind, readonly CodexReasoningEffort[]>;
 
 export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
@@ -125,4 +129,5 @@ export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
   copilot: "high",
   kimi: null,
   droid: null,
+  pi: null,
 } as const satisfies Record<ProviderKind, CodexReasoningEffort | null>;

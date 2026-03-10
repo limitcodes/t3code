@@ -34,12 +34,14 @@ const PROVIDERS_WITH_CUSTOM_MODEL_SUPPORT = new Set<ProviderKind>([
   "copilot",
   "kimi",
   "droid",
+  "pi",
 ]);
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
   copilot: new Set(getModelOptions("copilot").map((option) => option.slug)),
   kimi: new Set(getModelOptions("kimi").map((option) => option.slug)),
   droid: new Set(getModelOptions("droid").map((option) => option.slug)),
+  pi: new Set(getModelOptions("pi").map((option) => option.slug)),
 };
 
 const AppSettingsSchema = Schema.Struct({
@@ -64,6 +66,9 @@ const AppSettingsSchema = Schema.Struct({
   droidApiKey: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     Schema.withConstructorDefault(() => Option.some("")),
   ),
+  piBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
+    Schema.withConstructorDefault(() => Option.some("")),
+  ),
   enableCatppuccinTheme: Schema.Boolean.pipe(
     Schema.withConstructorDefault(() => Option.some(false)),
   ),
@@ -85,6 +90,9 @@ const AppSettingsSchema = Schema.Struct({
     Schema.withConstructorDefault(() => Option.some([])),
   ),
   customDroidModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  customPiModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
 });
@@ -168,6 +176,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customCopilotModels: normalizeCustomModelSlugs(settings.customCopilotModels, "copilot"),
     customKimiModels: normalizeCustomModelSlugs(settings.customKimiModels, "kimi"),
     customDroidModels: normalizeCustomModelSlugs(settings.customDroidModels, "droid"),
+    customPiModels: normalizeCustomModelSlugs(settings.customPiModels, "pi"),
   };
 }
 

@@ -86,7 +86,9 @@ function sanitizeLegacyProviderFields(value: unknown): unknown {
       typeof sanitizedValue === "string" &&
       sanitizedValue !== "codex" &&
       sanitizedValue !== "copilot" &&
-      sanitizedValue !== "kimi"
+      sanitizedValue !== "kimi" &&
+      sanitizedValue !== "droid" &&
+      sanitizedValue !== "pi"
     ) {
       changed = true;
       return [key, "codex"] as const;
