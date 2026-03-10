@@ -108,6 +108,18 @@ export const ServerCopilotReasoningProbe = Schema.Union([
 ]);
 export type ServerCopilotReasoningProbe = typeof ServerCopilotReasoningProbe.Type;
 
+export const ServerPiModel = Schema.Struct({
+  modelId: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+});
+export type ServerPiModel = typeof ServerPiModel.Type;
+
+export const ServerPiModelsInput = Schema.Struct({});
+export type ServerPiModelsInput = typeof ServerPiModelsInput.Type;
+
+export const ServerPiModels = Schema.Array(ServerPiModel);
+export type ServerPiModels = typeof ServerPiModels.Type;
+
 export const ServerConfig = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   keybindingsConfigPath: TrimmedNonEmptyString,

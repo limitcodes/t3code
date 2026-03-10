@@ -4,10 +4,9 @@ import { assertFailure } from "@effect/vitest/utils";
 
 import { Effect, Layer, Stream } from "effect";
 
-import { CopilotAdapter, type CopilotAdapterShape } from "../Services/CopilotAdapter.ts";
 import { CodexAdapter, CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { DroidAdapter, type DroidAdapterShape } from "../Services/DroidAdapter.ts";
-import { KimiAdapter, type KimiAdapterShape } from "../Services/KimiAdapter.ts";
+import { PiAdapter, type PiAdapterShape } from "../Services/PiAdapter.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
 import { ProviderAdapterRegistryLive } from "./ProviderAdapterRegistry.ts";
 import { ProviderUnsupportedError } from "../Errors.ts";
@@ -15,40 +14,6 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 
 const fakeCodexAdapter: CodexAdapterShape = {
   provider: "codex",
-  capabilities: { sessionModelSwitch: "in-session" },
-  startSession: vi.fn(),
-  sendTurn: vi.fn(),
-  interruptTurn: vi.fn(),
-  respondToRequest: vi.fn(),
-  respondToUserInput: vi.fn(),
-  stopSession: vi.fn(),
-  listSessions: vi.fn(),
-  hasSession: vi.fn(),
-  readThread: vi.fn(),
-  rollbackThread: vi.fn(),
-  stopAll: vi.fn(),
-  streamEvents: Stream.empty,
-};
-
-const fakeCopilotAdapter: CopilotAdapterShape = {
-  provider: "copilot",
-  capabilities: { sessionModelSwitch: "in-session" },
-  startSession: vi.fn(),
-  sendTurn: vi.fn(),
-  interruptTurn: vi.fn(),
-  respondToRequest: vi.fn(),
-  respondToUserInput: vi.fn(),
-  stopSession: vi.fn(),
-  listSessions: vi.fn(),
-  hasSession: vi.fn(),
-  readThread: vi.fn(),
-  rollbackThread: vi.fn(),
-  stopAll: vi.fn(),
-  streamEvents: Stream.empty,
-};
-
-const fakeKimiAdapter: KimiAdapterShape = {
-  provider: "kimi",
   capabilities: { sessionModelSwitch: "in-session" },
   startSession: vi.fn(),
   sendTurn: vi.fn(),
@@ -81,15 +46,31 @@ const fakeDroidAdapter: DroidAdapterShape = {
   streamEvents: Stream.empty,
 };
 
+const fakePiAdapter: PiAdapterShape = {
+  provider: "pi",
+  capabilities: { sessionModelSwitch: "in-session" },
+  startSession: vi.fn(),
+  sendTurn: vi.fn(),
+  interruptTurn: vi.fn(),
+  respondToRequest: vi.fn(),
+  respondToUserInput: vi.fn(),
+  stopSession: vi.fn(),
+  listSessions: vi.fn(),
+  hasSession: vi.fn(),
+  readThread: vi.fn(),
+  rollbackThread: vi.fn(),
+  stopAll: vi.fn(),
+  streamEvents: Stream.empty,
+};
+
 const layer = it.layer(
   Layer.mergeAll(
     Layer.provide(
       ProviderAdapterRegistryLive,
       Layer.mergeAll(
         Layer.succeed(CodexAdapter, fakeCodexAdapter),
-        Layer.succeed(CopilotAdapter, fakeCopilotAdapter),
-        Layer.succeed(KimiAdapter, fakeKimiAdapter),
         Layer.succeed(DroidAdapter, fakeDroidAdapter),
+        Layer.succeed(PiAdapter, fakePiAdapter),
       ),
     ),
     NodeServices.layer,
@@ -101,16 +82,14 @@ layer("ProviderAdapterRegistryLive", (it) => {
     Effect.gen(function* () {
       const registry = yield* ProviderAdapterRegistry;
       const codex = yield* registry.getByProvider("codex");
-      const copilot = yield* registry.getByProvider("copilot");
-      const kimi = yield* registry.getByProvider("kimi");
       const droid = yield* registry.getByProvider("droid");
+      const pi = yield* registry.getByProvider("pi");
       assert.equal(codex, fakeCodexAdapter);
-      assert.equal(copilot, fakeCopilotAdapter);
-      assert.equal(kimi, fakeKimiAdapter);
       assert.equal(droid, fakeDroidAdapter);
+      assert.equal(pi, fakePiAdapter);
 
       const providers = yield* registry.listProviders();
-      assert.deepEqual(providers, ["codex", "copilot", "kimi", "droid"]);
+      assert.deepEqual(providers, ["codex", "droid", "pi"]);
     }),
   );
 

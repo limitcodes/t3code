@@ -808,6 +808,53 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
 });
 
 const validation = makeProviderServiceLayer();
+
+it.effect("ProviderServiceLive routes Pi sessions after startSession persists the binding", () => {
+  const pi = makeFakeCodexAdapter("pi");
+  const registry: typeof ProviderAdapterRegistry.Service = {
+    getByProvider: (provider) =>
+      provider === "pi"
+        ? Effect.succeed(pi.adapter)
+        : Effect.fail(new ProviderUnsupportedError({ provider })),
+    listProviders: () => Effect.succeed(["pi"]),
+  };
+
+  const providerAdapterLayer = Layer.succeed(ProviderAdapterRegistry, registry);
+  const runtimeRepositoryLayer = ProviderSessionRuntimeRepositoryLive.pipe(
+    Layer.provide(SqlitePersistenceMemory),
+  );
+  const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+  const layer = Layer.mergeAll(
+    makeProviderServiceLive().pipe(
+      Layer.provide(providerAdapterLayer),
+      Layer.provide(directoryLayer),
+      Layer.provideMerge(AnalyticsService.layerTest),
+    ),
+    directoryLayer,
+    runtimeRepositoryLayer,
+    NodeServices.layer,
+  );
+
+  return Effect.gen(function* () {
+    const provider = yield* ProviderService;
+    const threadId = asThreadId("thread-pi-send");
+
+    yield* provider.startSession(threadId, {
+      threadId,
+      provider: "pi",
+      runtimeMode: "full-access",
+    });
+
+    yield* provider.sendTurn({
+      threadId,
+      input: "hello from pi",
+    });
+
+    assert.equal(pi.startSession.mock.calls.length, 1);
+    assert.equal(pi.sendTurn.mock.calls.length, 1);
+  }).pipe(Effect.provide(layer));
+});
+
 validation.layer("ProviderServiceLive validation", (it) => {
   it.effect("returns ProviderValidationError for invalid input payloads", () =>
     Effect.gen(function* () {

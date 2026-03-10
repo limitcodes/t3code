@@ -6,13 +6,9 @@ import {
   type OrchestrationReadModel,
   type OrchestrationSessionStatus,
 } from "@t3tools/contracts";
-import {
-  getModelOptions,
-  normalizeModelSlug,
-  resolveModelSlug,
-  resolveModelSlugForProvider,
-} from "@t3tools/shared/model";
+import { normalizeModelSlug, resolveModelSlug, resolveModelSlugForProvider } from "@t3tools/shared/model";
 import { create } from "zustand";
+import { inferThreadProviderState } from "./session-logic";
 import { type ChatMessage, type Project, type Thread } from "./types";
 
 // ── State ────────────────────────────────────────────────────────────
@@ -148,45 +144,10 @@ function toLegacyProvider(providerName: string | null): ProviderKind {
     providerName === "codex" ||
     providerName === "copilot" ||
     providerName === "kimi" ||
-    providerName === "droid"
+    providerName === "droid" ||
+    providerName === "pi"
   ) {
     return providerName;
-  }
-  return "codex";
-}
-
-const CODEX_MODEL_SLUGS = new Set<string>(getModelOptions("codex").map((option) => option.slug));
-const COPILOT_MODEL_SLUGS = new Set<string>(getModelOptions("copilot").map((option) => option.slug));
-const KIMI_MODEL_SLUGS = new Set<string>(getModelOptions("kimi").map((option) => option.slug));
-const DROID_MODEL_SLUGS = new Set<string>(getModelOptions("droid").map((option) => option.slug));
-
-function inferProviderForThreadModel(input: {
-  readonly model: string;
-  readonly sessionProviderName: string | null;
-}): ProviderKind {
-  if (
-    input.sessionProviderName === "codex" ||
-    input.sessionProviderName === "copilot" ||
-    input.sessionProviderName === "kimi" ||
-    input.sessionProviderName === "droid"
-  ) {
-    return input.sessionProviderName;
-  }
-  const normalizedKimi = normalizeModelSlug(input.model, "kimi");
-  if (normalizedKimi && KIMI_MODEL_SLUGS.has(normalizedKimi)) {
-    return "kimi";
-  }
-  const normalizedCopilot = normalizeModelSlug(input.model, "copilot");
-  if (normalizedCopilot && COPILOT_MODEL_SLUGS.has(normalizedCopilot)) {
-    return "copilot";
-  }
-  const normalizedCodex = normalizeModelSlug(input.model, "codex");
-  if (normalizedCodex && CODEX_MODEL_SLUGS.has(normalizedCodex)) {
-    return "codex";
-  }
-  const normalizedDroid = normalizeModelSlug(input.model, "droid");
-  if (normalizedDroid && DROID_MODEL_SLUGS.has(normalizedDroid)) {
-    return "droid";
   }
   return "codex";
 }
@@ -194,16 +155,14 @@ function inferProviderForThreadModel(input: {
 function resolveThreadModelForSync(input: {
   readonly model: string;
   readonly provider: ProviderKind;
-  readonly sessionProviderName: string | null;
+  readonly preserveModel: boolean;
 }): string {
   const normalized = normalizeModelSlug(input.model, input.provider);
   if (!normalized) {
     return DEFAULT_MODEL_BY_PROVIDER[input.provider];
   }
 
-  return input.sessionProviderName === input.provider
-    ? normalized
-    : resolveModelSlugForProvider(input.provider, normalized);
+  return input.preserveModel ? normalized : resolveModelSlugForProvider(input.provider, normalized);
 }
 
 function resolveWsHttpOrigin(): string {
@@ -250,18 +209,20 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
     .filter((thread) => thread.deletedAt === null)
     .map((thread) => {
       const existing = existingThreadById.get(thread.id);
+      const inferredProviderState = inferThreadProviderState({
+        model: thread.model,
+        sessionProviderName: thread.session?.providerName ?? null,
+        activityGroups: [thread.activities],
+      });
       return {
         id: thread.id,
         codexThreadId: null,
         projectId: thread.projectId,
         title: thread.title,
         model: resolveThreadModelForSync({
-          provider: inferProviderForThreadModel({
-            model: thread.model,
-            sessionProviderName: thread.session?.providerName ?? null,
-          }),
+          provider: inferredProviderState.provider,
           model: thread.model,
-          sessionProviderName: thread.session?.providerName ?? null,
+          preserveModel: inferredProviderState.preserveModel,
         }),
         runtimeMode: thread.runtimeMode,
         interactionMode: thread.interactionMode,

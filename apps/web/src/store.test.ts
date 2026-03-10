@@ -1,10 +1,4 @@
-import {
-  DEFAULT_MODEL_BY_PROVIDER,
-  ProjectId,
-  ThreadId,
-  TurnId,
-  type OrchestrationReadModel,
-} from "@t3tools/contracts";
+import { EventId, ProjectId, ThreadId, TurnId, type OrchestrationReadModel } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
 import { markThreadUnread, syncServerReadModel, type AppState } from "./store";
@@ -135,7 +129,7 @@ describe("store pure functions", () => {
 });
 
 describe("store read model sync", () => {
-  it("falls back to the codex default for unsupported provider models without an active session", () => {
+  it("preserves known provider models without requiring an active session", () => {
     const initialState = makeState(makeThread());
     const readModel = makeReadModel(
       makeReadModelThread({
@@ -145,7 +139,7 @@ describe("store read model sync", () => {
 
     const next = syncServerReadModel(initialState, readModel);
 
-    expect(next.threads[0]?.model).toBe(DEFAULT_MODEL_BY_PROVIDER.codex);
+    expect(next.threads[0]?.model).toBe("claude-opus-4-6");
   });
 
   it("preserves active Kimi session models that are not part of the built-in catalog", () => {
@@ -168,5 +162,41 @@ describe("store read model sync", () => {
     const next = syncServerReadModel(initialState, readModel);
 
     expect(next.threads[0]?.model).toBe("kimi-k2-thinking");
+  });
+
+  it("keeps Pi models and provider inference from session.configured activities", () => {
+    const initialState = makeState(makeThread());
+    const readModel = makeReadModel(
+      makeReadModelThread({
+        model: "claude-sonnet-4-20250514",
+        activities: [
+          {
+            id: EventId.makeUnsafe("evt-pi-configured"),
+            createdAt: "2026-02-27T00:00:01.000Z",
+            tone: "info",
+            kind: "session.configured",
+            summary: "Session configured",
+            payload: {
+              provider: "pi",
+              config: {
+                currentModelId: "claude-sonnet-4-20250514",
+                availableModels: [
+                  {
+                    modelId: "claude-sonnet-4-20250514",
+                    name: "Claude Sonnet 4",
+                  },
+                ],
+              },
+            },
+            turnId: null,
+          },
+        ],
+      }),
+    );
+
+    const next = syncServerReadModel(initialState, readModel);
+
+    expect(next.threads[0]?.model).toBe("claude-sonnet-4-20250514");
+    expect(next.threads[0]?.session).toBeNull();
   });
 });

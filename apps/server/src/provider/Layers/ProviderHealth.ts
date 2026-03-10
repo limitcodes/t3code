@@ -28,6 +28,7 @@ const CODEX_PROVIDER = "codex" as const;
 const COPILOT_PROVIDER = "copilot" as const;
 const KIMI_PROVIDER = "kimi" as const;
 const DROID_PROVIDER = "droid" as const;
+const PI_PROVIDER = "pi" as const;
 
 // ── Pure helpers ────────────────────────────────────────────────────
 
@@ -52,6 +53,7 @@ function isCommandMissingCause(error: unknown): boolean {
     lower.includes("spawn copilot enoent") ||
     lower.includes("spawn kimi enoent") ||
     lower.includes("spawn droid enoent") ||
+    lower.includes("spawn pi enoent") ||
     lower.includes("enoent") ||
     lower.includes("notfound")
   );
@@ -217,6 +219,7 @@ const runCodexCommand = (args: ReadonlyArray<string>) => runCliCommand("codex", 
 const runCopilotCommand = (args: ReadonlyArray<string>) => runCliCommand("copilot", args);
 const runKimiCommand = (args: ReadonlyArray<string>) => runCliCommand("kimi", args);
 const runDroidCommand = (args: ReadonlyArray<string>) => runCliCommand("droid", args);
+const runPiCommand = (args: ReadonlyArray<string>) => runCliCommand("pi", args);
 
 // ── Health check ────────────────────────────────────────────────────
 
@@ -555,17 +558,77 @@ export const checkDroidProviderStatus: Effect.Effect<
   };
 });
 
+export const checkPiProviderStatus: Effect.Effect<
+  ServerProviderStatus,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> = Effect.gen(function* () {
+  const checkedAt = new Date().toISOString();
+
+  const versionProbe = yield* runPiCommand(["--version"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(versionProbe)) {
+    const error = versionProbe.failure;
+    return {
+      provider: PI_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: isCommandMissingCause(error)
+        ? "pi CLI (`pi`) is not installed or not on PATH. Install with: npm install -g @mariozechner/pi-coding-agent"
+        : `Failed to execute pi CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+    };
+  }
+
+  if (Option.isNone(versionProbe.success)) {
+    return {
+      provider: PI_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "pi CLI is installed but failed to run. Timed out while running command.",
+    };
+  }
+
+  const version = versionProbe.success.value;
+  if (version.code !== 0) {
+    const detail = detailFromResult(version);
+    return {
+      provider: PI_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: detail
+        ? `pi CLI is installed but failed to run. ${detail}`
+        : "pi CLI is installed but failed to run.",
+    };
+  }
+
+  return {
+    provider: PI_PROVIDER,
+    status: "ready" as const,
+    available: true,
+    authStatus: "unknown" as const,
+    checkedAt,
+  };
+});
+
 // ── Layer ───────────────────────────────────────────────────────────
 
 export const ProviderHealthLive = Layer.effect(
   ProviderHealth,
   Effect.gen(function* () {
     const codexStatus = yield* checkCodexProviderStatus;
-    const copilotStatus = yield* checkCopilotProviderStatus;
-    const kimiStatus = yield* checkKimiProviderStatus;
     const droidStatus = yield* checkDroidProviderStatus;
+    const piStatus = yield* checkPiProviderStatus;
     return {
-      getStatuses: Effect.succeed([codexStatus, copilotStatus, kimiStatus, droidStatus]),
+      getStatuses: Effect.succeed([codexStatus, droidStatus, piStatus]),
     } satisfies ProviderHealthShape;
   }),
 );

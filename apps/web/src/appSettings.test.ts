@@ -78,6 +78,23 @@ describe("getAppModelOptions", () => {
     });
   });
 
+  it("keeps Pi dynamic selections and saved custom entries", () => {
+    const options = getAppModelOptions("pi", ["custom/pi-model"], "claude-sonnet-4-20250514");
+
+    expect(options).toEqual([
+      {
+        slug: "custom/pi-model",
+        name: "custom/pi-model",
+        isCustom: true,
+      },
+      {
+        slug: "claude-sonnet-4-20250514",
+        name: "claude-sonnet-4-20250514",
+        isCustom: true,
+      },
+    ]);
+  });
+
   it("does not keep unsupported Codex selections in the picker catalog", () => {
     const options = getAppModelOptions("codex", [], "custom/selected-model");
 
@@ -145,6 +162,7 @@ describe("supportsCustomModels", () => {
     expect(supportsCustomModels("codex")).toBe(false);
     expect(supportsCustomModels("copilot")).toBe(true);
     expect(supportsCustomModels("kimi")).toBe(true);
+    expect(supportsCustomModels("pi")).toBe(true);
   });
 });
 

@@ -263,6 +263,9 @@ function resolveWsRpc(tag: string): unknown {
   if (tag === WS_METHODS.serverGetConfig) {
     return fixture.serverConfig;
   }
+  if (tag === WS_METHODS.serverListPiModels) {
+    return [];
+  }
   if (tag === WS_METHODS.gitListBranches) {
     return {
       isRepo: true,

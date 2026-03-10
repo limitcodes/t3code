@@ -29,7 +29,8 @@ function decodeProviderKind(
     providerName === "codex" ||
     providerName === "copilot" ||
     providerName === "kimi" ||
-    providerName === "droid"
+    providerName === "droid" ||
+    providerName === "pi"
   ) {
     return Effect.succeed(providerName);
   }

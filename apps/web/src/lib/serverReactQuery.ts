@@ -2,6 +2,7 @@ import type {
   ServerCopilotReasoningProbe,
   ServerCopilotReasoningProbeInput,
   ServerCopilotUsage,
+  ServerPiModels,
 } from "@t3tools/contracts";
 import { queryOptions } from "@tanstack/react-query";
 import { ensureNativeApi } from "~/nativeApi";
@@ -34,6 +35,7 @@ export const serverQueryKeys = {
   copilotUsage: () => ["server", "copilotUsage"] as const,
   copilotReasoningProbe: (input: ServerCopilotReasoningProbeInput) =>
     ["server", "copilotReasoningProbe", input.model, input.binaryPath ?? null] as const,
+  piModels: () => ["server", "piModels"] as const,
 };
 
 export function serverConfigQueryOptions() {
@@ -67,6 +69,20 @@ export function serverCopilotReasoningProbeQueryOptions(
     queryFn: async () => {
       const api = ensureNativeApi();
       return api.server.probeCopilotReasoning(input);
+    },
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
+    enabled,
+    retry: false,
+  });
+}
+
+export function serverPiModelsQueryOptions(enabled = true) {
+  return queryOptions<ServerPiModels>({
+    queryKey: serverQueryKeys.piModels(),
+    queryFn: async () => {
+      const api = ensureNativeApi();
+      return api.server.listPiModels();
     },
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,

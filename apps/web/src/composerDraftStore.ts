@@ -215,7 +215,11 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
 }
 
 function normalizeProviderKind(value: unknown): ProviderKind | null {
-  return value === "codex" || value === "copilot" || value === "kimi" || value === "droid"
+  return value === "codex" ||
+    value === "copilot" ||
+    value === "kimi" ||
+    value === "droid" ||
+    value === "pi"
     ? value
     : null;
 }

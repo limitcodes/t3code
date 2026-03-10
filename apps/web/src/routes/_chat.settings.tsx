@@ -61,25 +61,18 @@ const MODEL_PROVIDER_SETTINGS: Array<{
     example: "gpt-6.7-codex-ultra-preview",
   },
   {
-    provider: "copilot",
-    title: "GitHub Copilot",
-    description: "Save additional Copilot model slugs for the picker and `/model` command.",
-    placeholder: "your-copilot-model-slug",
-    example: "claude-sonnet-4.6",
-  },
-  {
-    provider: "kimi",
-    title: "Kimi Code",
-    description: "Save additional Kimi Code model ids for the picker and `/model` command.",
-    placeholder: "your-kimi-model-id",
-    example: "kimi-for-coding",
-  },
-  {
     provider: "droid",
     title: "Droid",
     description: "Save additional Droid model ids for the picker and `/model` command.",
     placeholder: "your-droid-model-id",
     example: "claude-opus-4-6",
+  },
+  {
+    provider: "pi",
+    title: "Pi",
+    description: "Save additional Pi model ids for the picker and `/model` command.",
+    placeholder: "your-provider/your-pi-model-id",
+    example: "anthropic/claude-sonnet-4-20250514",
   },
 ] as const;
 
@@ -106,12 +99,10 @@ function getCustomModelsForProvider(
   switch (provider) {
     case "codex":
       return settings.customCodexModels;
-    case "copilot":
-      return settings.customCopilotModels;
-    case "kimi":
-      return settings.customKimiModels;
     case "droid":
       return settings.customDroidModels;
+    case "pi":
+      return settings.customPiModels;
     default:
       return settings.customCodexModels;
   }
@@ -124,12 +115,10 @@ function getDefaultCustomModelsForProvider(
   switch (provider) {
     case "codex":
       return defaults.customCodexModels;
-    case "copilot":
-      return defaults.customCopilotModels;
-    case "kimi":
-      return defaults.customKimiModels;
     case "droid":
       return defaults.customDroidModels;
+    case "pi":
+      return defaults.customPiModels;
     default:
       return defaults.customCodexModels;
   }
@@ -139,12 +128,10 @@ function patchCustomModels(provider: ProviderKind, models: string[]) {
   switch (provider) {
     case "codex":
       return { customCodexModels: models };
-    case "copilot":
-      return { customCopilotModels: models };
-    case "kimi":
-      return { customKimiModels: models };
     case "droid":
       return { customDroidModels: models };
+    case "pi":
+      return { customPiModels: models };
     default:
       return { customCodexModels: models };
   }
@@ -171,6 +158,7 @@ function SettingsRouteView() {
     copilot: "",
     kimi: "",
     droid: "",
+    pi: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
@@ -178,9 +166,6 @@ function SettingsRouteView() {
 
   const codexBinaryPath = settings.codexBinaryPath;
   const codexHomePath = settings.codexHomePath;
-  const copilotBinaryPath = settings.copilotBinaryPath;
-  const kimiBinaryPath = settings.kimiBinaryPath;
-  const kimiApiKey = settings.kimiApiKey;
   const droidBinaryPath = settings.droidBinaryPath;
   const droidApiKey = settings.droidApiKey;
   const codexServiceTier = settings.codexServiceTier;
@@ -478,111 +463,6 @@ function SettingsRouteView() {
                     }
                   >
                     Reset codex overrides
-                  </Button>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-border bg-card p-5">
-              <div className="mb-4">
-                <h2 className="text-sm font-medium text-foreground">GitHub Copilot CLI</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  This override applies to new Copilot sessions and lets you use a non-default
-                  <code> copilot</code> install.
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <label htmlFor="copilot-binary-path" className="block space-y-1">
-                  <span className="text-xs font-medium text-foreground">Copilot binary path</span>
-                  <Input
-                    id="copilot-binary-path"
-                    value={copilotBinaryPath}
-                    onChange={(event) => updateSettings({ copilotBinaryPath: event.target.value })}
-                    placeholder="copilot"
-                    spellCheck={false}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    Leave blank to use <code>copilot</code> from your PATH.
-                  </span>
-                </label>
-
-                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <p>
-                    Binary source:{" "}
-                    <span className="font-medium text-foreground">
-                      {copilotBinaryPath || "PATH"}
-                    </span>
-                  </p>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() =>
-                      updateSettings({
-                        copilotBinaryPath: defaults.copilotBinaryPath,
-                      })
-                    }
-                  >
-                    Reset copilot overrides
-                  </Button>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-border bg-card p-5">
-              <div className="mb-4">
-                <h2 className="text-sm font-medium text-foreground">Kimi Code CLI</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  These overrides apply to new Kimi Code sessions. Install with <code>curl -LsSf https://code.kimi.com/install.sh | bash</code> and add a Kimi Code API key to let T3 Code start Kimi sessions directly.
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <label htmlFor="kimi-binary-path" className="block space-y-1">
-                  <span className="text-xs font-medium text-foreground">Kimi binary path</span>
-                  <Input
-                    id="kimi-binary-path"
-                    value={kimiBinaryPath}
-                    onChange={(event) => updateSettings({ kimiBinaryPath: event.target.value })}
-                    placeholder="kimi"
-                    spellCheck={false}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    Leave blank to use <code>kimi</code> from your PATH.
-                  </span>
-                </label>
-
-                <label htmlFor="kimi-api-key" className="block space-y-1">
-                  <span className="text-xs font-medium text-foreground">Kimi API key</span>
-                  <Input
-                    id="kimi-api-key"
-                    type="password"
-                    value={kimiApiKey}
-                    onChange={(event) => updateSettings({ kimiApiKey: event.target.value })}
-                    placeholder="sk-kimi-..."
-                    autoComplete="new-password"
-                    spellCheck={false}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    Generate this from the Kimi Code Console. T3 Code stores it locally on this device and injects it into new Kimi CLI sessions.
-                  </span>
-                </label>
-
-                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <p>
-                    Binary source: <span className="font-medium text-foreground">{kimiBinaryPath || "PATH"}</span>
-                  </p>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() =>
-                      updateSettings({
-                        kimiBinaryPath: defaults.kimiBinaryPath,
-                        kimiApiKey: defaults.kimiApiKey,
-                      })
-                    }
-                  >
-                    Reset kimi overrides
                   </Button>
                 </div>
               </div>

@@ -36,6 +36,9 @@ type ModelOption = {
   readonly name: string;
 };
 
+export const PI_PROVIDER_OPTIONS = ["anthropic", "openai", "google", "github"] as const;
+export type PiProvider = (typeof PI_PROVIDER_OPTIONS)[number];
+
 export const MODEL_OPTIONS_BY_PROVIDER = {
   codex: [
     { slug: "gpt-5.4", name: "GPT-5.4" },
@@ -87,6 +90,11 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "kimi-k2.5", name: "Droid Core (Kimi K2.5)" },
     { slug: "minimax-m2.5", name: "Droid Core (MiniMax M2.5)" },
   ],
+  // Pi model list is intentionally empty — available models are fetched
+  // dynamically via `get_available_models` RPC on session start and surfaced
+  // through the `session.configured` activity. The default slug below acts
+  // only as an initial placeholder before any pi session has run.
+  pi: [] as ReadonlyArray<ModelOption>,
 } as const satisfies Record<ProviderKind, readonly ModelOption[]>;
 export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
 
@@ -98,6 +106,7 @@ export const DEFAULT_MODEL_BY_PROVIDER = {
   copilot: "claude-sonnet-4.5",
   kimi: "kimi-for-coding",
   droid: "claude-opus-4-6",
+  pi: "claude-sonnet-4-20250514",
 } as const satisfies Record<ProviderKind, ModelSlug>;
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
@@ -111,6 +120,7 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER = {
   copilot: {},
   kimi: {},
   droid: {},
+  pi: {},
 } as const satisfies Record<ProviderKind, Record<string, ModelSlug>>;
 
 export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
@@ -118,6 +128,7 @@ export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
   copilot: COPILOT_REASONING_EFFORT_OPTIONS,
   kimi: [],
   droid: [],
+  pi: [],
 } as const satisfies Record<ProviderKind, readonly CodexReasoningEffort[]>;
 
 export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
@@ -125,4 +136,5 @@ export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
   copilot: "high",
   kimi: null,
   droid: null,
+  pi: null,
 } as const satisfies Record<ProviderKind, CodexReasoningEffort | null>;

@@ -6,6 +6,7 @@ import {
   deriveActivePlanState,
   deriveConfiguredModelOptions,
   deriveConfiguredModelOptionsFromActivityGroups,
+  inferThreadProviderState,
   PROVIDER_OPTIONS,
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -221,6 +222,48 @@ describe("derivePendingUserInputs", () => {
         ],
       },
     ]);
+  });
+});
+
+describe("inferThreadProviderState", () => {
+  it("keeps Pi selected when a matching session.configured activity exists", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "session-configured-pi",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        kind: "session.configured",
+        summary: "Session configured",
+        tone: "info",
+        payload: {
+          provider: "pi",
+          config: {
+            currentModelId: "claude-sonnet-4-20250514",
+            availableModels: [
+              { modelId: "claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
+              { modelId: "gpt-5.4", name: "GPT-5.4" },
+            ],
+          },
+        },
+      }),
+    ];
+
+    expect(
+      inferThreadProviderState({
+        model: "claude-sonnet-4-20250514",
+        sessionProviderName: null,
+        activityGroups: [activities],
+      }),
+    ).toEqual({ provider: "pi", preserveModel: true });
+  });
+
+  it("treats provider-prefixed Pi models as Pi before a session starts", () => {
+    expect(
+      inferThreadProviderState({
+        model: "anthropic/claude-sonnet-4-20250514",
+        sessionProviderName: null,
+        activityGroups: [],
+      }),
+    ).toEqual({ provider: "pi", preserveModel: true });
   });
 });
 
@@ -755,8 +798,8 @@ describe("PROVIDER_OPTIONS", () => {
     const cursor = PROVIDER_OPTIONS.find((option) => option.value === "cursor");
     expect(PROVIDER_OPTIONS).toEqual([
       { value: "codex", label: "Codex", available: true },
-      { value: "copilot", label: "GitHub Copilot", available: true },
-      { value: "kimi", label: "Kimi Code", available: true },
+      { value: "droid", label: "Droid", available: true },
+      { value: "pi", label: "Pi", available: true },
       { value: "claudeCode", label: "Claude Code", available: false },
       { value: "cursor", label: "Cursor", available: false },
     ]);
