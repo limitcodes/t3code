@@ -8,6 +8,8 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 
+import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
+
 import type { ChatMessage, ProposedPlan, SessionPhase, ThreadSession, TurnDiffSummary } from "./types";
 
 export type ProviderPickerKind = ProviderKind | "claudeCode" | "cursor";
@@ -21,6 +23,7 @@ export const PROVIDER_OPTIONS: Array<{
   { value: "copilot", label: "GitHub Copilot", available: true },
   { value: "kimi", label: "Kimi Code", available: true },
   { value: "droid", label: "Droid", available: true },
+  { value: "pi", label: "Pi", available: true },
   { value: "claudeCode", label: "Claude Code", available: false },
   { value: "cursor", label: "Cursor", available: false },
 ];
@@ -62,6 +65,26 @@ export interface ConfiguredDroidModeOption {
 export interface ConfiguredDroidModeState {
   currentModeId: string | null;
   availableModes: ConfiguredDroidModeOption[];
+}
+
+const CODEX_MODEL_SLUGS = new Set<string>(getModelOptions("codex").map((option) => option.slug));
+const COPILOT_MODEL_SLUGS = new Set<string>(getModelOptions("copilot").map((option) => option.slug));
+const KIMI_MODEL_SLUGS = new Set<string>(getModelOptions("kimi").map((option) => option.slug));
+const DROID_MODEL_SLUGS = new Set<string>(getModelOptions("droid").map((option) => option.slug));
+
+function isProviderKind(value: unknown): value is ProviderKind {
+  return (
+    value === "codex" ||
+    value === "copilot" ||
+    value === "kimi" ||
+    value === "droid" ||
+    value === "pi"
+  );
+}
+
+export interface InferredThreadProviderState {
+  provider: ProviderKind;
+  preserveModel: boolean;
 }
 
 export interface ActivePlanState {
@@ -397,6 +420,97 @@ export function deriveConfiguredModelOptionsFromActivityGroups(
   }
 
   return [];
+}
+
+export function inferThreadProviderState(input: {
+  model: string | null | undefined;
+  sessionProviderName: string | null | undefined;
+  activityGroups: ReadonlyArray<ReadonlyArray<OrchestrationThreadActivity>>;
+}): InferredThreadProviderState {
+  if (isProviderKind(input.sessionProviderName)) {
+    return { provider: input.sessionProviderName, preserveModel: true };
+  }
+
+  const normalizedModel = typeof input.model === "string" ? input.model.trim() : "";
+  const ordered = input.activityGroups
+    .flatMap((activities) => activities)
+    .toSorted(compareActivitiesByOrder)
+    .toReversed();
+
+  let latestConfiguredProvider: ProviderKind | null = null;
+  for (const activity of ordered) {
+    if (activity.kind !== "session.configured") {
+      continue;
+    }
+
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const payloadProvider = payload?.provider;
+    if (!isProviderKind(payloadProvider)) {
+      continue;
+    }
+
+    latestConfiguredProvider ??= payloadProvider;
+
+    if (!normalizedModel) {
+      return { provider: payloadProvider, preserveModel: true };
+    }
+
+    const rawConfig = payload?.config;
+    const config =
+      rawConfig && typeof rawConfig === "object" ? (rawConfig as Record<string, unknown>) : null;
+    const currentModelId =
+      typeof config?.currentModelId === "string" ? config.currentModelId.trim() : "";
+    if (currentModelId === normalizedModel) {
+      return { provider: payloadProvider, preserveModel: true };
+    }
+
+    const availableModels = Array.isArray(config?.availableModels) ? config.availableModels : [];
+    if (
+      availableModels.some(
+        (entry) =>
+          entry &&
+          typeof entry === "object" &&
+          typeof (entry as Record<string, unknown>).modelId === "string" &&
+          ((entry as Record<string, unknown>).modelId as string).trim() === normalizedModel,
+      )
+    ) {
+      return { provider: payloadProvider, preserveModel: true };
+    }
+  }
+
+  if (latestConfiguredProvider) {
+    return { provider: latestConfiguredProvider, preserveModel: true };
+  }
+
+  const normalizedPi = normalizeModelSlug(input.model, "pi");
+  if (normalizedPi && normalizedPi.includes("/")) {
+    return { provider: "pi", preserveModel: true };
+  }
+
+  const normalizedKimi = normalizeModelSlug(input.model, "kimi");
+  if (normalizedKimi && KIMI_MODEL_SLUGS.has(normalizedKimi)) {
+    return { provider: "kimi", preserveModel: false };
+  }
+
+  const normalizedCopilot = normalizeModelSlug(input.model, "copilot");
+  if (normalizedCopilot && COPILOT_MODEL_SLUGS.has(normalizedCopilot)) {
+    return { provider: "copilot", preserveModel: false };
+  }
+
+  const normalizedCodex = normalizeModelSlug(input.model, "codex");
+  if (normalizedCodex && CODEX_MODEL_SLUGS.has(normalizedCodex)) {
+    return { provider: "codex", preserveModel: false };
+  }
+
+  const normalizedDroid = normalizeModelSlug(input.model, "droid");
+  if (normalizedDroid && DROID_MODEL_SLUGS.has(normalizedDroid)) {
+    return { provider: "droid", preserveModel: false };
+  }
+
+  return { provider: "codex", preserveModel: false };
 }
 
 export function deriveConfiguredDroidModeStateFromActivityGroups(

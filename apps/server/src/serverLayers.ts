@@ -22,6 +22,7 @@ import { makeCopilotAdapterLive } from "./provider/Layers/CopilotAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
 import { makeDroidAdapterLive } from "./provider/Layers/DroidAdapter";
 import { makeKimiAdapterLive } from "./provider/Layers/KimiAdapter";
+import { makePiAdapterLive } from "./provider/Layers/PiAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory";
@@ -63,11 +64,13 @@ export function makeServerProviderLayer(): Layer.Layer<
     const copilotAdapterLayer = makeCopilotAdapterLive();
     const kimiAdapterLayer = makeKimiAdapterLive();
     const droidAdapterLayer = makeDroidAdapterLive();
+    const piAdapterLayer = makePiAdapterLive();
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(copilotAdapterLayer),
       Layer.provide(kimiAdapterLayer),
       Layer.provide(droidAdapterLayer),
+      Layer.provide(piAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
     return makeProviderServiceLive(

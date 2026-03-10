@@ -81,6 +81,13 @@ const MODEL_PROVIDER_SETTINGS: Array<{
     placeholder: "your-droid-model-id",
     example: "claude-opus-4-6",
   },
+  {
+    provider: "pi",
+    title: "Pi",
+    description: "Save additional Pi model ids for the picker and `/model` command.",
+    placeholder: "your-provider/your-pi-model-id",
+    example: "anthropic/claude-sonnet-4-20250514",
+  },
 ] as const;
 
 const VISIBLE_CUSTOM_THEME_PRESET_LABELS = CUSTOM_THEME_OPTIONS.filter(
@@ -112,6 +119,8 @@ function getCustomModelsForProvider(
       return settings.customKimiModels;
     case "droid":
       return settings.customDroidModels;
+    case "pi":
+      return settings.customPiModels;
     default:
       return settings.customCodexModels;
   }
@@ -130,6 +139,8 @@ function getDefaultCustomModelsForProvider(
       return defaults.customKimiModels;
     case "droid":
       return defaults.customDroidModels;
+    case "pi":
+      return defaults.customPiModels;
     default:
       return defaults.customCodexModels;
   }
@@ -145,6 +156,8 @@ function patchCustomModels(provider: ProviderKind, models: string[]) {
       return { customKimiModels: models };
     case "droid":
       return { customDroidModels: models };
+    case "pi":
+      return { customPiModels: models };
     default:
       return { customCodexModels: models };
   }
@@ -171,6 +184,7 @@ function SettingsRouteView() {
     copilot: "",
     kimi: "",
     droid: "",
+    pi: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>

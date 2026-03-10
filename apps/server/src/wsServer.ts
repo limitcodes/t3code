@@ -6,8 +6,10 @@
  *
  * @module Server
  */
+import { execFile } from "node:child_process";
 import http from "node:http";
 import type { Duplex } from "node:stream";
+import { promisify } from "node:util";
 
 import type * as acp from "@agentclientprotocol/sdk";
 import Mime from "@effect/platform-node/Mime";
@@ -26,6 +28,7 @@ import {
   WS_METHODS,
   type ServerCopilotReasoningProbe,
   type ServerCopilotReasoningProbeInput,
+  type ServerPiModels,
   WebSocketRequest,
   WsPush,
   WsResponse,
@@ -361,6 +364,38 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
   const providerStatuses = yield* providerHealth.getStatuses;
   const readCopilotUsage = createCopilotUsageReader();
+  const execFileAsync = promisify(execFile);
+
+  async function listPiModels(): Promise<ServerPiModels> {
+    const { stdout } = await execFileAsync("pi", ["--list-models"], {
+      env: { ...process.env },
+      maxBuffer: 1024 * 1024,
+    });
+
+    const models: Array<ServerPiModels[number]> = [];
+    const seen = new Set<string>();
+    for (const line of stdout.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("provider") || /^-+$/.test(trimmed)) {
+        continue;
+      }
+      const [provider, model] = trimmed.split(/\s+/, 3);
+      if (!provider || !model) {
+        continue;
+      }
+      const modelId = `${provider}/${model}`;
+      if (seen.has(modelId)) {
+        continue;
+      }
+      seen.add(modelId);
+      models.push({
+        modelId,
+        name: `${model} (${provider})`,
+      });
+    }
+
+    return models;
+  }
 
   async function probeCopilotReasoning(
     input: ServerCopilotReasoningProbeInput,
@@ -1180,6 +1215,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         const body = stripRequestTag(request.body);
         return yield* Effect.tryPromise(() => probeCopilotReasoning(body));
       }
+
+      case WS_METHODS.serverListPiModels:
+        return yield* Effect.tryPromise(() => listPiModels());
 
       case WS_METHODS.serverUpsertKeybinding: {
         const body = stripRequestTag(request.body);

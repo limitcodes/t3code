@@ -205,6 +205,37 @@ it.layer(makeDirectoryLayer(SqlitePersistenceMemory))("ProviderSessionDirectoryL
       fs.rmSync(tempDir, { recursive: true, force: true });
     }));
 
+  it("rehydrates persisted pi provider bindings across layer restart", () =>
+    Effect.gen(function* () {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3-provider-directory-pi-"));
+      const dbPath = path.join(tempDir, "orchestration.sqlite");
+      const directoryLayer = makeDirectoryLayer(makeSqlitePersistenceLive(dbPath));
+
+      const threadId = ThreadId.makeUnsafe("thread-pi-restart");
+
+      yield* Effect.gen(function* () {
+        const directory = yield* ProviderSessionDirectory;
+        yield* directory.upsert({
+          provider: "pi",
+          threadId,
+        });
+      }).pipe(Effect.provide(directoryLayer));
+
+      yield* Effect.gen(function* () {
+        const directory = yield* ProviderSessionDirectory;
+        const provider = yield* directory.getProvider(threadId);
+        assert.equal(provider, "pi");
+
+        const resolvedBinding = yield* directory.getBinding(threadId);
+        assertSome(resolvedBinding, {
+          threadId,
+          provider: "pi",
+        });
+      }).pipe(Effect.provide(directoryLayer));
+
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }));
+
   it("ignores unknown persisted providers instead of failing reads", () =>
     Effect.gen(function* () {
       const runtimeRepository = yield* ProviderSessionRuntimeRepository;

@@ -160,7 +160,7 @@ layer("OrchestrationEventStore", (it) => {
           ${JSON.stringify({
             threadId,
             messageId: MessageId.makeUnsafe("msg-store-legacy-provider"),
-            provider: "copilot",
+            provider: "legacy-provider",
             runtimeMode: "full-access",
             interactionMode: "default",
             createdAt: now,
@@ -177,6 +177,49 @@ layer("OrchestrationEventStore", (it) => {
       assert.equal(replayed[0]?.type, "thread.turn-start-requested");
       if (replayed[0]?.type === "thread.turn-start-requested") {
         assert.equal(replayed[0].payload.provider, "codex");
+      }
+    }),
+  );
+
+  it.effect("preserves supported provider kinds during append and replay", () =>
+    Effect.gen(function* () {
+      const eventStore = yield* OrchestrationEventStore;
+      const now = new Date().toISOString();
+      const threadId = ThreadId.makeUnsafe("thread-pi-provider");
+
+      const appended = yield* eventStore.append({
+        type: "thread.turn-start-requested",
+        eventId: EventId.makeUnsafe("evt-store-pi-provider"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: now,
+        commandId: CommandId.makeUnsafe("cmd-store-pi-provider"),
+        causationEventId: null,
+        correlationId: CommandId.makeUnsafe("cmd-store-pi-provider"),
+        metadata: {},
+        payload: {
+          threadId,
+          messageId: MessageId.makeUnsafe("msg-store-pi-provider"),
+          provider: "pi",
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: now,
+        },
+      });
+
+      assert.equal(appended.type, "thread.turn-start-requested");
+      if (appended.type === "thread.turn-start-requested") {
+        assert.equal(appended.payload.provider, "pi");
+      }
+
+      const replayed = yield* Stream.runCollect(eventStore.readFromSequence(appended.sequence - 1, 10)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      );
+
+      assert.equal(replayed.length, 1);
+      assert.equal(replayed[0]?.type, "thread.turn-start-requested");
+      if (replayed[0]?.type === "thread.turn-start-requested") {
+        assert.equal(replayed[0].payload.provider, "pi");
       }
     }),
   );

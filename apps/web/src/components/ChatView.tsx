@@ -55,6 +55,7 @@ import {
   serverConfigQueryOptions,
   serverCopilotReasoningProbeQueryOptions,
   serverCopilotUsageQueryOptions,
+  serverPiModelsQueryOptions,
   serverQueryKeys,
 } from "~/lib/serverReactQuery";
 import { formatCopilotRequestCost } from "~/lib/copilotBilling";
@@ -73,6 +74,7 @@ import {
 import {
   deriveConfiguredDroidModeStateFromActivityGroups,
   deriveConfiguredModelOptionsFromActivityGroups,
+  inferThreadProviderState,
   derivePendingApprovals,
   derivePendingUserInputs,
   derivePhase,
@@ -188,6 +190,7 @@ import {
   Icon,
   OpenAI,
   OpenCodeIcon,
+  PiIcon,
   VisualStudioCode,
   Zed,
 } from "./Icons";
@@ -354,6 +357,7 @@ function getCustomModelsForProvider(
     readonly customCopilotModels: readonly string[];
     readonly customKimiModels: readonly string[];
     readonly customDroidModels: readonly string[];
+    readonly customPiModels: readonly string[];
   },
 ): readonly string[] {
   switch (provider) {
@@ -365,8 +369,10 @@ function getCustomModelsForProvider(
       return settings.customKimiModels;
     case "droid":
       return settings.customDroidModels;
+    case "pi":
+      return settings.customPiModels;
     default:
-      return settings.customCodexModels;
+      return [];
   }
 }
 
@@ -875,17 +881,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const serverThread = threads.find((t) => t.id === threadId);
   const fallbackDraftProject = projects.find((project) => project.id === draftThread?.projectId);
   const localDraftError = serverThread ? null : (localDraftErrorsByThreadId[threadId] ?? null);
+  const draftProvider: ProviderKind = composerDraft.provider ?? "codex";
   const localDraftThread = useMemo(
     () =>
       draftThread
         ? buildLocalDraftThread(
             threadId,
             draftThread,
-            fallbackDraftProject?.model ?? DEFAULT_MODEL_BY_PROVIDER.codex,
+            fallbackDraftProject?.model ?? DEFAULT_MODEL_BY_PROVIDER[draftProvider],
             localDraftError,
           )
         : undefined,
-    [draftThread, fallbackDraftProject?.model, localDraftError, threadId],
+    [draftThread, draftProvider, fallbackDraftProject?.model, localDraftError, threadId],
   );
   const activeThread = serverThread ?? localDraftThread;
   const runtimeMode =
@@ -918,7 +925,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
     markThreadVisited,
   ]);
 
-  const sessionProvider = activeThread?.session?.provider ?? null;
+  const inferredActiveThreadProvider = activeThread
+    ? inferThreadProviderState({
+        model: activeThread.model,
+        sessionProviderName: activeThread.session?.provider ?? null,
+        activityGroups: [activeThread.activities],
+      }).provider
+    : null;
+  const sessionProvider = activeThread?.session?.provider ?? inferredActiveThreadProvider ?? null;
   const selectedProviderByThreadId = composerDraft.provider;
   const hasThreadStarted = Boolean(
     activeThread &&
@@ -928,8 +942,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const selectedServiceTierSetting = settings.codexServiceTier;
   const selectedServiceTier = resolveAppServiceTier(selectedServiceTierSetting);
+  // When a thread has started but no actual provider session exists yet (only
+  // inferred from model slug heuristics), prefer the explicit user-selected
+  // provider from the composer draft to avoid misrouting (e.g. Pi models being
+  // sent to Codex because the model slug doesn't match any known provider).
+  const hasActualSession = activeThread?.session?.provider != null;
   const lockedProvider: ProviderKind | null = hasThreadStarted
-    ? (sessionProvider ?? selectedProviderByThreadId ?? null)
+    ? (hasActualSession
+        ? (sessionProvider ?? selectedProviderByThreadId ?? null)
+        : (selectedProviderByThreadId ?? sessionProvider ?? null))
     : null;
   const selectedProvider: ProviderKind = lockedProvider ?? selectedProviderByThreadId ?? "codex";
   const configuredModelOptionsByProvider = useMemo(
@@ -950,6 +971,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
         threads.map((thread) => thread.activities),
         "droid",
       ),
+      pi: deriveConfiguredModelOptionsFromActivityGroups(
+        threads.map((thread) => thread.activities),
+        "pi",
+      ),
     }),
     [threads],
   );
@@ -957,23 +982,53 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => deriveConfiguredDroidModeStateFromActivityGroups(threads.map((thread) => thread.activities)),
     [threads],
   );
+  const piModelsQuery = useQuery(serverPiModelsQueryOptions());
+  const listedPiModels = useMemo(
+    () => (piModelsQuery.data ?? []).map((model) => ({ slug: model.modelId, name: model.name })),
+    [piModelsQuery.data],
+  );
   const modelOptionsByProvider = useMemo(
-    () => getCustomModelOptionsByProvider(settings, configuredModelOptionsByProvider),
-    [configuredModelOptionsByProvider, settings],
+    () => getCustomModelOptionsByProvider(settings, configuredModelOptionsByProvider, listedPiModels),
+    [configuredModelOptionsByProvider, listedPiModels, settings],
   );
   const customModelsForSelectedProvider = useMemo(
     () => modelOptionsByProvider[selectedProvider].map((option) => option.slug),
     [modelOptionsByProvider, selectedProvider],
   );
-  const baseThreadModel = resolveAppModelSelection(
-    selectedProvider,
+  const baseThreadModel = useMemo(() => {
+    if (selectedProvider === "pi") {
+      const fallbackPiModel = modelOptionsByProvider.pi[0]?.slug ?? "";
+      return (
+        resolveAppModelSelection(
+          selectedProvider,
+          customModelsForSelectedProvider,
+          activeThread?.model ?? activeProject?.model ?? fallbackPiModel,
+        ) || fallbackPiModel
+      ) as ModelSlug | "";
+    }
+
+    return resolveAppModelSelection(
+      selectedProvider,
+      customModelsForSelectedProvider,
+      activeThread?.model ?? activeProject?.model ?? getDefaultModel(selectedProvider),
+    ) as ModelSlug;
+  }, [
+    activeProject?.model,
+    activeThread?.model,
     customModelsForSelectedProvider,
-    activeThread?.model ?? activeProject?.model ?? getDefaultModel(selectedProvider),
-  ) as ModelSlug;
+    modelOptionsByProvider.pi,
+    selectedProvider,
+  ]);
   const selectedModel = useMemo(() => {
     const draftModel = composerDraft.model;
     if (!draftModel) {
       return baseThreadModel;
+    }
+    if (selectedProvider === "pi") {
+      return (
+        resolveAppModelSelection(selectedProvider, customModelsForSelectedProvider, draftModel) ||
+        baseThreadModel
+      ) as ModelSlug | "";
     }
     return resolveAppModelSelection(
       selectedProvider,
@@ -2897,7 +2952,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }
       const title = truncateTitle(titleSeed);
       let threadCreateModel: ModelSlug =
-        selectedModel || (activeProject.model as ModelSlug) || DEFAULT_MODEL_BY_PROVIDER.codex;
+        selectedModel || (activeProject.model as ModelSlug) || DEFAULT_MODEL_BY_PROVIDER[selectedProvider];
 
       if (isLocalDraftThread) {
         await api.orchestration.dispatchCommand({
@@ -3340,7 +3395,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       selectedModel ||
       (activeThread.model as ModelSlug) ||
       (activeProject.model as ModelSlug) ||
-      DEFAULT_MODEL_BY_PROVIDER.codex;
+      DEFAULT_MODEL_BY_PROVIDER[selectedProvider];
 
     setThreadSendInFlight(activeThread.id, true);
     beginSendPhase(activeThread.id, "sending-turn");
@@ -3468,14 +3523,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
   const onProviderModelSelect = useCallback(
     (provider: ProviderKind, model: ModelSlug) => {
-      if (!activeThread) return;
+      const targetThreadId = activeThread?.id ?? threadId;
+      if (!targetThreadId) return;
       if (lockedProvider !== null && provider !== lockedProvider) {
         scheduleComposerFocus();
         return;
       }
-      setComposerDraftProvider(activeThread.id, provider);
+      setComposerDraftProvider(targetThreadId, provider);
       setComposerDraftModel(
-        activeThread.id,
+        targetThreadId,
         resolveAppModelSelection(
           provider,
           getCustomModelsForProvider(provider, settings),
@@ -3485,14 +3541,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
       scheduleComposerFocus();
     },
     [
-      activeThread,
+      activeThread?.id,
       lockedProvider,
       scheduleComposerFocus,
       setComposerDraftModel,
       setComposerDraftProvider,
-      settings.customCodexModels,
-      settings.customCopilotModels,
-      settings.customKimiModels,
+      settings,
+      threadId,
     ],
   );
   const onEffortSelect = useCallback(
@@ -5947,8 +6002,10 @@ function getCustomModelOptionsByProvider(
     customCopilotModels: readonly string[];
     customKimiModels: readonly string[];
     customDroidModels: readonly string[];
+    customPiModels: readonly string[];
   },
   configuredModelsByProvider: Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>,
+  listedPiModels: ReadonlyArray<{ slug: string; name: string }>,
 ): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
   const builtInAndCustomDroidOptions = getAppModelOptions("droid", settings.customDroidModels);
   const savedCustomDroidOptions = builtInAndCustomDroidOptions.filter((option) => option.isCustom);
@@ -5968,6 +6025,11 @@ function getCustomModelOptionsByProvider(
       configuredModelsByProvider.kimi,
     ),
     droid: preferredDroidOptions,
+    // Pi models come dynamically from pi's RPC or `pi --list-models`.
+    pi:
+      configuredModelsByProvider.pi.length > 0
+        ? mergeModelOptions(getAppModelOptions("pi", settings.customPiModels), configuredModelsByProvider.pi)
+        : mergeModelOptions(getAppModelOptions("pi", settings.customPiModels), listedPiModels),
   };
 }
 
@@ -5976,6 +6038,7 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   copilot: GitHubIcon,
   kimi: KimiIcon,
   droid: DroidIcon,
+  pi: PiIcon,
   claudeCode: ClaudeAI,
   cursor: CursorIcon,
 };

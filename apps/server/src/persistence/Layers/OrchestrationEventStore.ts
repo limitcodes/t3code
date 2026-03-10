@@ -8,6 +8,7 @@ import {
   OrchestrationEvent,
   OrchestrationEventMetadata,
   OrchestrationEventType,
+  ProviderKind,
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -68,6 +69,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function isSupportedPersistedProvider(value: unknown): value is typeof ProviderKind.Type {
+  return typeof value === "string" && Schema.is(ProviderKind)(value);
+}
+
 function sanitizeLegacyProviderFields(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sanitizeLegacyProviderFields);
@@ -84,9 +89,7 @@ function sanitizeLegacyProviderFields(value: unknown): unknown {
     if (
       key === "provider" &&
       typeof sanitizedValue === "string" &&
-      sanitizedValue !== "codex" &&
-      sanitizedValue !== "copilot" &&
-      sanitizedValue !== "kimi"
+      !isSupportedPersistedProvider(sanitizedValue)
     ) {
       changed = true;
       return [key, "codex"] as const;
