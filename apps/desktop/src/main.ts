@@ -31,7 +31,11 @@ import {
 import { RotatingFileSink } from "@t3tools/shared/logging";
 import { showDesktopConfirmDialog } from "./confirmDialog";
 import { fixPath } from "./fixPath";
-import { getAutoUpdateDisabledReason, shouldBroadcastDownloadProgress } from "./updateState";
+import {
+  getAutoUpdateDisabledReason,
+  resolveAutoUpdaterTrack,
+  shouldBroadcastDownloadProgress,
+} from "./updateState";
 import {
   createInitialDesktopUpdateState,
   reduceDesktopUpdateStateOnCheckFailure,
@@ -76,8 +80,6 @@ const LOG_FILE_MAX_FILES = 10;
 const APP_RUN_ID = Crypto.randomBytes(6).toString("hex");
 const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000;
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000;
-const DESKTOP_UPDATE_CHANNEL = "latest";
-const DESKTOP_UPDATE_ALLOW_PRERELEASE = false;
 const BACKEND_READY_TIMEOUT_MS = 15_000;
 
 type DesktopUpdateErrorContext = DesktopUpdateState["errorContext"];
@@ -935,12 +937,16 @@ function configureAutoUpdater(): void {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
-  // Keep alpha branding, but force all installs onto the stable update track.
-  autoUpdater.channel = DESKTOP_UPDATE_CHANNEL;
-  autoUpdater.allowPrerelease = DESKTOP_UPDATE_ALLOW_PRERELEASE;
+  const updaterTrack = resolveAutoUpdaterTrack(app.getVersion());
+  autoUpdater.channel = updaterTrack.channel;
+  autoUpdater.allowPrerelease = updaterTrack.allowPrerelease;
   autoUpdater.allowDowngrade = false;
   autoUpdater.disableDifferentialDownload = isArm64HostRunningIntelBuild(desktopRuntimeInfo);
   let lastLoggedDownloadMilestone = -1;
+
+  console.info(
+    `[desktop-updater] Configured update track channel=${updaterTrack.channel} allowPrerelease=${updaterTrack.allowPrerelease} version=${app.getVersion()}`,
+  );
 
   if (isArm64HostRunningIntelBuild(desktopRuntimeInfo)) {
     console.info(

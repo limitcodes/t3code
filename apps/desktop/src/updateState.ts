@@ -1,5 +1,8 @@
 import type { DesktopUpdateState } from "@t3tools/contracts";
 
+const DEFAULT_DESKTOP_UPDATE_CHANNEL = "latest";
+const VERSION_PRERELEASE_PATTERN = /^\d+\.\d+\.\d+-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)$/;
+
 export function shouldBroadcastDownloadProgress(
   currentState: DesktopUpdateState,
   nextPercent: number,
@@ -45,4 +48,36 @@ export function getAutoUpdateDisabledReason(args: {
     return "Automatic updates on Linux require running the AppImage build.";
   }
   return null;
+}
+
+export function getVersionPrereleaseChannel(version: string): string | null {
+  const match = VERSION_PRERELEASE_PATTERN.exec(version);
+  if (!match) {
+    return null;
+  }
+
+  const prereleaseTag = match[1]?.split(".")[0] ?? "";
+  if (prereleaseTag.length === 0 || !/[A-Za-z]/.test(prereleaseTag)) {
+    return null;
+  }
+
+  return prereleaseTag;
+}
+
+export function resolveAutoUpdaterTrack(version: string): {
+  channel: string;
+  allowPrerelease: boolean;
+} {
+  const prereleaseChannel = getVersionPrereleaseChannel(version);
+  if (prereleaseChannel === null) {
+    return {
+      channel: DEFAULT_DESKTOP_UPDATE_CHANNEL,
+      allowPrerelease: false,
+    };
+  }
+
+  return {
+    channel: prereleaseChannel,
+    allowPrerelease: true,
+  };
 }

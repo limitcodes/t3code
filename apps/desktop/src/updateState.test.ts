@@ -4,7 +4,9 @@ import type { DesktopUpdateState } from "@t3tools/contracts";
 import {
   getCanRetryAfterDownloadFailure,
   getAutoUpdateDisabledReason,
+  getVersionPrereleaseChannel,
   nextStatusAfterDownloadFailure,
+  resolveAutoUpdaterTrack,
   shouldBroadcastDownloadProgress,
 } from "./updateState";
 
@@ -119,6 +121,36 @@ describe("nextStatusAfterDownloadFailure", () => {
         availableVersion: null,
       }),
     ).toBe("error");
+  });
+});
+
+describe("getVersionPrereleaseChannel", () => {
+  it("returns null for stable versions", () => {
+    expect(getVersionPrereleaseChannel("1.2.3")).toBeNull();
+  });
+
+  it("returns the prerelease label for tagged builds", () => {
+    expect(getVersionPrereleaseChannel("0.0.11-fork.2")).toBe("fork");
+  });
+
+  it("ignores numeric-only prerelease identifiers", () => {
+    expect(getVersionPrereleaseChannel("1.2.3-1.2")).toBeNull();
+  });
+});
+
+describe("resolveAutoUpdaterTrack", () => {
+  it("keeps stable builds on the latest channel", () => {
+    expect(resolveAutoUpdaterTrack("1.2.3")).toEqual({
+      channel: "latest",
+      allowPrerelease: false,
+    });
+  });
+
+  it("enables prerelease checks on the current prerelease channel", () => {
+    expect(resolveAutoUpdaterTrack("0.0.11-fork.2")).toEqual({
+      channel: "fork",
+      allowPrerelease: true,
+    });
   });
 });
 
