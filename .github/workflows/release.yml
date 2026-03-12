@@ -10,6 +10,11 @@ on:
         description: "Release version (for example 1.2.3 or v1.2.3)"
         required: true
         type: string
+      publish_cli:
+        description: "Also publish the CLI package to npm"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -24,6 +29,7 @@ jobs:
       tag: ${{ steps.release_meta.outputs.tag }}
       is_prerelease: ${{ steps.release_meta.outputs.is_prerelease }}
       make_latest: ${{ steps.release_meta.outputs.make_latest }}
+      publish_cli: ${{ steps.release_meta.outputs.publish_cli }}
       ref: ${{ github.sha }}
     steps:
       - name: Checkout
@@ -53,6 +59,18 @@ jobs:
           else
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
             echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            publish_cli="${{ github.event.inputs.publish_cli }}"
+          else
+            publish_cli="${{ vars.T3CODE_PUBLISH_CLI || 'false' }}"
+          fi
+
+          if [[ "$publish_cli" == "true" ]]; then
+            echo "publish_cli=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_cli=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Setup Bun
@@ -225,6 +243,7 @@ jobs:
 
   publish_cli:
     name: Publish CLI to npm
+    if: ${{ needs.preflight.outputs.publish_cli == 'true' }}
     needs: [preflight, build]
     runs-on: ubuntu-24.04
     steps:
@@ -258,7 +277,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [preflight, build, publish_cli]
+    needs: [preflight, build]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout

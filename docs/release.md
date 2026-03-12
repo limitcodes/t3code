@@ -15,7 +15,7 @@ This document covers how to run desktop releases from one tag, first without sig
   - Versions with a suffix after `X.Y.Z` (for example `1.2.3-alpha.1`) are published as GitHub prereleases.
   - Only plain `X.Y.Z` releases are marked as the repository's latest release.
 - Includes Electron auto-update metadata (for example `latest*.yml` and `*.blockmap`) in release assets.
-- Publishes the CLI package (`apps/server`, npm package `t3`) with OIDC trusted publishing.
+- Optionally publishes the CLI package (`apps/server`, npm package `t3`) when explicitly enabled.
 - Signing is optional and auto-detected per platform from secrets.
 
 ## Desktop auto-update notes
@@ -40,10 +40,15 @@ This document covers how to run desktop releases from one tag, first without sig
   - `electron-updater` reads `latest-mac.yml` for both Intel and Apple Silicon.
   - The workflow merges the per-arch mac manifests into one `latest-mac.yml` before publishing the GitHub Release.
 
-## 0) npm OIDC trusted publishing setup (CLI)
+## 0) Optional npm OIDC trusted publishing setup (CLI)
 
-The workflow publishes the CLI with `bun publish` from `apps/server` after bumping
-the package version to the release tag version.
+The workflow only publishes the CLI when you explicitly opt in:
+
+- `workflow_dispatch` with `publish_cli=true`, or
+- repository variable `T3CODE_PUBLISH_CLI=true` for tag-triggered releases.
+
+When enabled, it publishes the CLI with `bun publish` from `apps/server` after
+bumping the package version to the release tag version.
 
 Checklist:
 
@@ -54,14 +59,14 @@ Checklist:
    - Workflow file: `.github/workflows/release.yml`
    - Environment (if used): match your npm trusted publishing config
 3. Ensure npm account and org policies allow trusted publishing for the package.
-4. Create release tag `vX.Y.Z` and push; workflow will:
+4. Create release tag `vX.Y.Z` and push; workflow will, when CLI publishing is enabled:
    - set `apps/server/package.json` version to `X.Y.Z`
    - build web + server
    - run `bun publish --access public`
 
 ## 1) Dry-run release without signing
 
-Use this first to validate the release pipeline.
+Use this first to validate the GitHub release pipeline.
 
 1. Confirm no signing secrets are required for this test.
 2. Create a test tag:
