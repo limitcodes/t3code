@@ -637,6 +637,74 @@ routing.layer("ProviderServiceLive routing", (it) => {
       }
     }),
   );
+
+  it.effect("sanitizes persisted provider options before writing runtime payloads", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const runtimeRepository = yield* ProviderSessionRuntimeRepository;
+
+      const session = yield* provider.startSession(asThreadId("thread-secrets"), {
+        provider: "codex",
+        threadId: asThreadId("thread-secrets"),
+        runtimeMode: "full-access",
+        providerOptions: {
+          codex: {
+            binaryPath: "/tmp/codex",
+          },
+          kimi: {
+            binaryPath: "/tmp/kimi",
+            apiKey: "sk-kimi-secret",
+          },
+        },
+      });
+
+      const runtime = yield* runtimeRepository.getByThreadId({
+        threadId: session.threadId,
+      });
+      assert.equal(Option.isSome(runtime), true);
+      if (Option.isSome(runtime)) {
+        assert.deepEqual(runtime.value.runtimePayload, {
+          cwd: process.cwd(),
+          model: null,
+          activeTurnId: null,
+          lastError: null,
+          providerOptions: {
+            codex: {
+              binaryPath: "/tmp/codex",
+            },
+            kimi: {
+              binaryPath: "/tmp/kimi",
+            },
+          },
+        });
+      }
+    }),
+  );
+
+  it.effect("restarts the same thread without duplicating active sessions", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+
+      yield* provider.startSession(asThreadId("thread-restart"), {
+        provider: "codex",
+        threadId: asThreadId("thread-restart"),
+        runtimeMode: "full-access",
+      });
+
+      const restarted = yield* provider.startSession(asThreadId("thread-restart"), {
+        provider: "codex",
+        threadId: asThreadId("thread-restart"),
+        runtimeMode: "approval-required",
+      });
+
+      const sessions = yield* provider.listSessions();
+      assert.equal(restarted.runtimeMode, "approval-required");
+      assert.equal(
+        sessions.filter((session) => session.threadId === asThreadId("thread-restart")).length,
+        1,
+      );
+    }),
+  );
 });
 
 const fanout = makeProviderServiceLayer();

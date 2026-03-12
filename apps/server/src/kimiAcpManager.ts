@@ -496,6 +496,7 @@ function killChildTree(child: ChildProcessWithoutNullStreams): void {
 
 export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
   private readonly sessions = new Map<ThreadId, KimiSessionContext>();
+  private readonly startingSessions = new Map<ThreadId, KimiSessionContext>();
 
   private emitRuntimeEvent(event: ProviderRuntimeEvent) {
     this.emit("event", event);
@@ -757,10 +758,12 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
       });
     });
 
+    const pending = context.pendingApprovals.get(requestId);
     context.pendingApprovals.delete(requestId);
+    const resolvedTurnId = pending?.turnId ?? context.currentTurnId;
     this.emitRuntimeEvent({
       ...this.createEventBase(context),
-      ...(context.currentTurnId ? { turnId: context.currentTurnId } : {}),
+      ...(resolvedTurnId ? { turnId: resolvedTurnId } : {}),
       requestId: RuntimeRequestId.makeUnsafe(requestId),
       type: "request.resolved",
       payload: {
@@ -781,7 +784,7 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
     });
 
     const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
-      if (!this.sessions.has(context.session.threadId)) {
+      if (!this.isTrackedContext(context)) {
         return;
       }
 
@@ -804,7 +807,7 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
         }
       }
 
-      this.sessions.delete(context.session.threadId);
+      this.deleteTrackedSession(context.session.threadId, context);
       cleanupKimiTempConfig(context.tempConfigDir);
     };
 
@@ -853,6 +856,7 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
   async startSession(input: KimiAppServerStartSessionInput): Promise<ProviderSession> {
     const resolvedCwd = input.cwd ?? process.cwd();
     const now = new Date().toISOString();
+    const previousContext = this.sessions.get(input.threadId);
     const session: ProviderSession = {
       provider: "kimi",
       status: "connecting",
@@ -920,7 +924,7 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
       stopping: false,
       ...(tempConfig ? { tempConfigDir: tempConfig.dirPath } : {}),
     };
-    this.sessions.set(input.threadId, context);
+    this.startingSessions.set(input.threadId, context);
     this.attachProcessListeners(context);
 
     try {
@@ -974,6 +978,11 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
       });
 
       this.emitSessionStarted(context);
+      this.startingSessions.delete(input.threadId);
+      this.sessions.set(input.threadId, context);
+      if (previousContext && previousContext !== context) {
+        await this.disposeContext(previousContext);
+      }
       return { ...context.session };
     } catch (error) {
       const rawMessage = toMessage(error, "Failed to start Kimi Code session.");
@@ -987,16 +996,13 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
         rawMessage,
         ...(loginProbeOutput ? { loginProbeOutput } : {}),
       });
+      this.startingSessions.delete(input.threadId);
       this.updateSession(context, {
         status: "error",
         lastError: message,
       });
       this.emitRuntimeError(context, message);
-      context.stopping = true;
-      this.resolvePendingApprovalsAsCancelled(context);
-      killChildTree(context.child);
-      this.sessions.delete(input.threadId);
-      cleanupKimiTempConfig(context.tempConfigDir);
+      await this.disposeContext(context);
       throw new Error(message, { cause: error });
     }
   }
@@ -1014,6 +1020,13 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
     }
     if ((input.attachments?.length ?? 0) > 0) {
       throw new Error("Kimi Code integration currently supports text prompts only.");
+    }
+    if (
+      context.currentTurnId ||
+      context.session.status === "running" ||
+      context.session.activeTurnId
+    ) {
+      throw new Error("Kimi Code already has a turn in progress for this session.");
     }
 
     const turnId = TurnId.makeUnsafe(randomUUID());
@@ -1118,6 +1131,31 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
       return;
     }
 
+    await this.disposeContext(context);
+    this.emitSessionExit(context, {
+      reason: "Kimi Code session stopped.",
+      exitKind: "graceful",
+      recoverable: true,
+    });
+  }
+
+  private deleteTrackedSession(threadId: ThreadId, context: KimiSessionContext): void {
+    if (this.sessions.get(threadId) === context) {
+      this.sessions.delete(threadId);
+    }
+    if (this.startingSessions.get(threadId) === context) {
+      this.startingSessions.delete(threadId);
+    }
+  }
+
+  private isTrackedContext(context: KimiSessionContext): boolean {
+    const threadId = context.session.threadId;
+    return (
+      this.sessions.get(threadId) === context || this.startingSessions.get(threadId) === context
+    );
+  }
+
+  private async disposeContext(context: KimiSessionContext): Promise<void> {
     context.stopping = true;
     this.resolvePendingApprovalsAsCancelled(context);
     try {
@@ -1131,12 +1169,7 @@ export class KimiAcpManager extends EventEmitter<KimiAcpManagerEvents> {
       status: "closed",
       activeTurnId: undefined,
     });
-    this.emitSessionExit(context, {
-      reason: "Kimi Code session stopped.",
-      exitKind: "graceful",
-      recoverable: true,
-    });
-    this.sessions.delete(threadId);
+    this.deleteTrackedSession(context.session.threadId, context);
     cleanupKimiTempConfig(context.tempConfigDir);
   }
 

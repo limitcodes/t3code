@@ -167,6 +167,15 @@ describe("decider project scripts", () => {
               fastMode: true,
             },
           },
+          providerOptions: {
+            codex: {
+              binaryPath: "/tmp/codex",
+            },
+            kimi: {
+              binaryPath: "/tmp/kimi",
+              apiKey: "sk-kimi-secret",
+            },
+          },
           interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
           runtimeMode: "approval-required",
           createdAt: now,
@@ -197,7 +206,20 @@ describe("decider project scripts", () => {
           fastMode: true,
         },
       },
+      providerOptions: {
+        codex: {
+          binaryPath: "/tmp/codex",
+        },
+        kimi: {
+          binaryPath: "/tmp/kimi",
+        },
+      },
       runtimeMode: "approval-required",
+    });
+    expect(turnStartEvent.payload.providerOptions).not.toMatchObject({
+      kimi: {
+        apiKey: "sk-kimi-secret",
+      },
     });
   });
 

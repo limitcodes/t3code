@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { ThreadId } from "@t3tools/contracts";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  KimiAcpManager,
   buildKimiApiKeyConfig,
   buildKimiCliEnv,
   buildKimiCliArgs,
@@ -157,5 +159,58 @@ describe("kimiAcpManager model availability", () => {
         },
       }),
     ).toBe("Kimi Code CLI requires authentication. Run `kimi login` and try again.");
+  });
+
+  it("rejects overlapping turns for the same Kimi session", async () => {
+    const manager = new KimiAcpManager();
+    let resolvePrompt: ((value: { stopReason: "completed" }) => void) | undefined;
+    const context = {
+      session: {
+        provider: "kimi",
+        status: "ready",
+        runtimeMode: "full-access",
+        model: "kimi-for-coding",
+        threadId: ThreadId.makeUnsafe("thread-kimi"),
+        createdAt: "2026-02-10T00:00:00.000Z",
+        updatedAt: "2026-02-10T00:00:00.000Z",
+      },
+      connection: {
+        prompt: vi.fn(
+          () =>
+            new Promise<{ stopReason: "completed" }>((resolve) => {
+              resolvePrompt = resolve;
+            }),
+        ),
+      },
+      acpSessionId: "session-kimi",
+      models: null,
+      pendingApprovals: new Map(),
+      toolSnapshots: new Map(),
+      currentTurnId: undefined,
+      stopping: false,
+    };
+
+    vi.spyOn(manager as any, "requireSession").mockReturnValue(context as never);
+    vi.spyOn(manager as any, "updateSession").mockImplementation(() => undefined);
+    vi.spyOn(manager as any, "emitRuntimeEvent").mockImplementation(() => undefined);
+    vi.spyOn(manager as any, "emitRuntimeError").mockImplementation(() => undefined);
+
+    const firstTurn = manager.sendTurn({
+      threadId: ThreadId.makeUnsafe("thread-kimi"),
+      input: "hello",
+    });
+
+    await expect(
+      manager.sendTurn({
+        threadId: ThreadId.makeUnsafe("thread-kimi"),
+        input: "second",
+      }),
+    ).rejects.toThrow("Kimi Code already has a turn in progress for this session.");
+
+    resolvePrompt?.({ stopReason: "completed" });
+
+    await expect(firstTurn).resolves.toMatchObject({
+      threadId: ThreadId.makeUnsafe("thread-kimi"),
+    });
   });
 });

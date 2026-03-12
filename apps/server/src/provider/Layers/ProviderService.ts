@@ -30,6 +30,10 @@ import {
   ProviderSessionDirectory,
   type ProviderRuntimeBinding,
 } from "../Services/ProviderSessionDirectory.ts";
+import {
+  sanitizeProviderOptionsForPersistence,
+  sanitizeProviderOptionsRecordForPersistence,
+} from "../providerOptions.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import { AnalyticsService } from "../../telemetry/Services/AnalyticsService.ts";
 
@@ -88,14 +92,15 @@ function toRuntimeStatus(session: ProviderSession): "starting" | "running" | "st
 
 function toRuntimePayloadFromSession(
   session: ProviderSession,
-  extra?: { readonly providerOptions?: unknown },
+  extra?: { readonly providerOptions?: ProviderSessionStartInput["providerOptions"] },
 ): Record<string, unknown> {
+  const providerOptions = sanitizeProviderOptionsForPersistence(extra?.providerOptions);
   return {
     cwd: session.cwd ?? null,
     model: session.model ?? null,
     activeTurnId: session.activeTurnId ?? null,
     lastError: session.lastError ?? null,
-    ...(extra?.providerOptions !== undefined ? { providerOptions: extra.providerOptions } : {}),
+    ...(providerOptions !== undefined ? { providerOptions } : {}),
   };
 }
 
@@ -106,8 +111,7 @@ function readPersistedProviderOptions(
     return undefined;
   }
   const raw = "providerOptions" in runtimePayload ? runtimePayload.providerOptions : undefined;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
-  return raw as Record<string, unknown>;
+  return sanitizeProviderOptionsRecordForPersistence(raw);
 }
 
 function readPersistedCwd(
@@ -150,7 +154,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     const upsertSessionBinding = (
       session: ProviderSession,
       threadId: ThreadId,
-      extra?: { readonly providerOptions?: unknown },
+      extra?: { readonly providerOptions?: ProviderSessionStartInput["providerOptions"] },
     ) =>
       directory.upsert({
         threadId,
@@ -268,6 +272,23 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         return { adapter: recovered.adapter, threadId: input.threadId, isActive: true } as const;
       });
 
+    const stopOtherActiveSessionsForThread = (
+      threadId: ThreadId,
+      keepProvider: ProviderSession["provider"],
+    ) =>
+      Effect.forEach(adapters, (candidate) => {
+        if (candidate.provider === keepProvider) {
+          return Effect.void;
+        }
+        return candidate
+          .hasSession(threadId)
+          .pipe(
+            Effect.flatMap((hasSession) =>
+              hasSession ? candidate.stopSession(threadId) : Effect.void,
+            ),
+          );
+      }).pipe(Effect.asVoid);
+
     const startSession: ProviderServiceShape["startSession"] = (threadId, rawInput) =>
       Effect.gen(function* () {
         const parsed = yield* decodeInputOrValidationError({
@@ -283,6 +304,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         };
         const adapter = yield* registry.getByProvider(input.provider);
         const session = yield* adapter.startSession(input);
+        yield* stopOtherActiveSessionsForThread(threadId, adapter.provider);
 
         if (session.provider !== adapter.provider) {
           return yield* toValidationError(

@@ -350,6 +350,7 @@ function killChildTree(child: ChildProcessWithoutNullStreams): void {
 
 export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
   private readonly sessions = new Map<ThreadId, CopilotSessionContext>();
+  private readonly startingSessions = new Map<ThreadId, CopilotSessionContext>();
 
   private emitRuntimeEvent(event: ProviderRuntimeEvent) {
     this.emit("event", event);
@@ -652,7 +653,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
     });
 
     const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
-      if (!this.sessions.has(context.session.threadId)) {
+      if (!this.isTrackedContext(context)) {
         return;
       }
 
@@ -675,7 +676,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
         }
       }
 
-      this.sessions.delete(context.session.threadId);
+      this.deleteTrackedSession(context.session.threadId, context);
     };
 
     context.child.once("error", (error) => {
@@ -766,6 +767,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
   async startSession(input: CopilotAppServerStartSessionInput): Promise<ProviderSession> {
     const resolvedCwd = input.cwd ?? process.cwd();
     const now = new Date().toISOString();
+    const previousContext = this.sessions.get(input.threadId);
     const session: ProviderSession = {
       provider: "copilot",
       status: "connecting",
@@ -819,7 +821,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       turnInFlight: false,
       stopping: false,
     };
-    this.sessions.set(input.threadId, context);
+    this.startingSessions.set(input.threadId, context);
     this.attachProcessListeners(context);
 
     try {
@@ -878,25 +880,28 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       }
 
       this.emitSessionStarted(context);
+      this.startingSessions.delete(input.threadId);
+      this.sessions.set(input.threadId, context);
+      if (previousContext && previousContext !== context) {
+        await this.disposeContext(previousContext);
+      }
       return { ...context.session };
     } catch (error) {
       const message =
         context.lastStderrLine ?? toMessage(error, "Failed to start GitHub Copilot session.");
+      this.startingSessions.delete(input.threadId);
       this.updateSession(context, {
         status: "error",
         lastError: message,
       });
       this.emitRuntimeError(context, message);
-      if (this.sessions.has(input.threadId)) {
+      if (this.isTrackedContext(context)) {
         this.emitSessionExit(context, {
           reason: message,
           exitKind: "error",
         });
       }
-      context.stopping = true;
-      this.resolvePendingApprovalsAsCancelled(context);
-      killChildTree(context.child);
-      this.sessions.delete(input.threadId);
+      await this.disposeContext(context);
       throw new Error(message, { cause: error });
     }
   }
@@ -1045,6 +1050,31 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       return;
     }
 
+    await this.disposeContext(context);
+    this.emitSessionExit(context, {
+      reason: "GitHub Copilot session stopped.",
+      exitKind: "graceful",
+      recoverable: true,
+    });
+  }
+
+  private deleteTrackedSession(threadId: ThreadId, context: CopilotSessionContext): void {
+    if (this.sessions.get(threadId) === context) {
+      this.sessions.delete(threadId);
+    }
+    if (this.startingSessions.get(threadId) === context) {
+      this.startingSessions.delete(threadId);
+    }
+  }
+
+  private isTrackedContext(context: CopilotSessionContext): boolean {
+    const threadId = context.session.threadId;
+    return (
+      this.sessions.get(threadId) === context || this.startingSessions.get(threadId) === context
+    );
+  }
+
+  private async disposeContext(context: CopilotSessionContext): Promise<void> {
     context.stopping = true;
     this.resolvePendingApprovalsAsCancelled(context);
     try {
@@ -1058,12 +1088,7 @@ export class CopilotAcpManager extends EventEmitter<CopilotAcpManagerEvents> {
       status: "closed",
       activeTurnId: undefined,
     });
-    this.emitSessionExit(context, {
-      reason: "GitHub Copilot session stopped.",
-      exitKind: "graceful",
-      recoverable: true,
-    });
-    this.sessions.delete(threadId);
+    this.deleteTrackedSession(context.session.threadId, context);
   }
 
   async listSessions(): Promise<ReadonlyArray<ProviderSession>> {
