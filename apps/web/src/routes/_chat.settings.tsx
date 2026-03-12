@@ -11,6 +11,7 @@ import {
   shouldShowFastTierIcon,
   useAppSettings,
 } from "../appSettings";
+import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
 import {
@@ -21,7 +22,6 @@ import {
 } from "../lib/customThemes";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
-import { preferredTerminalEditor } from "../terminal-links";
 import ThreadNewButton from "../components/ThreadNewButton";
 import ThreadSidebarToggle from "../components/ThreadSidebarToggle";
 import { Button } from "../components/ui/button";
@@ -172,14 +172,21 @@ function SettingsRouteView() {
   const codexServiceTier = settings.codexServiceTier;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const selectedCustomTheme = CUSTOM_THEME_OPTIONS_BY_ID[customThemeId];
+  const availableEditors = serverConfigQuery.data?.availableEditors;
 
   const openKeybindingsFile = useCallback(() => {
     if (!keybindingsConfigPath) return;
     setOpenKeybindingsError(null);
     setIsOpeningKeybindings(true);
     const api = ensureNativeApi();
+    const editor = resolveAndPersistPreferredEditor(availableEditors ?? []);
+    if (!editor) {
+      setOpenKeybindingsError("No available editors found.");
+      setIsOpeningKeybindings(false);
+      return;
+    }
     void api.shell
-      .openInEditor(keybindingsConfigPath, preferredTerminalEditor())
+      .openInEditor(keybindingsConfigPath, editor)
       .catch((error) => {
         setOpenKeybindingsError(
           error instanceof Error ? error.message : "Unable to open keybindings file.",
@@ -188,7 +195,7 @@ function SettingsRouteView() {
       .finally(() => {
         setIsOpeningKeybindings(false);
       });
-  }, [keybindingsConfigPath]);
+  }, [availableEditors, keybindingsConfigPath]);
 
   const addCustomModel = useCallback(
     (provider: ProviderKind) => {

@@ -110,7 +110,6 @@ let cachedSnapshot: AppSettings = DEFAULT_APP_SETTINGS;
 export function supportsCustomModels(provider: ProviderKind): boolean {
   return PROVIDERS_WITH_CUSTOM_MODEL_SUPPORT.has(provider);
 }
-
 export function normalizeCustomModelSlugs(
   models: Iterable<string | null | undefined>,
   provider: ProviderKind = "codex",
@@ -159,7 +158,6 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customKimiModels: normalizeCustomModelSlugs(settings.customKimiModels, "kimi"),
   };
 }
-
 export function getAppModelOptions(
   provider: ProviderKind,
   customModels: readonly string[],

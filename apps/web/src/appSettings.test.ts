@@ -108,7 +108,6 @@ describe("resolveAppModelSelection", () => {
     expect(resolveAppModelSelection("kimi", [], "")).toBe("kimi-for-coding");
   });
 });
-
 describe("getSlashModelOptions", () => {
   it("keeps Codex /model suggestions limited to the built-in catalog", () => {
     const options = getSlashModelOptions("codex", ["custom/internal-model"], "", "gpt-5.3-codex");

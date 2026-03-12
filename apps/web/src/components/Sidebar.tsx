@@ -41,7 +41,7 @@ import { isElectron } from "../env";
 import { APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
 import { useStore } from "../store";
-import { isChatNewLocalShortcut, isChatNewShortcut, shortcutLabelForCommand } from "../keybindings";
+import { shortcutLabelForCommand } from "../keybindings";
 import { derivePendingApprovals, derivePendingUserInputs } from "../session-logic";
 import { gitRemoveWorktreeMutationOptions, gitStatusQueryOptions } from "../lib/gitReactQuery";
 import { useNewThreadActions } from "../hooks/useNewThread";
@@ -83,7 +83,11 @@ import {
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { isNonEmpty as isNonEmptyString } from "effect/String";
-import { resolveThreadStatusPill, shouldClearThreadSelectionOnMouseDown } from "./Sidebar.logic";
+import {
+  resolveThreadRowClassName,
+  resolveThreadStatusPill,
+  shouldClearThreadSelectionOnMouseDown,
+} from "./Sidebar.logic";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const THREAD_PREVIEW_LIMIT = 6;
@@ -262,7 +266,6 @@ export default function Sidebar() {
   const getDraftThreadByProjectId = useComposerDraftStore(
     (store) => store.getDraftThreadByProjectId,
   );
-  const getDraftThread = useComposerDraftStore((store) => store.getDraftThread);
   const terminalStateByThreadId = useTerminalStateStore((state) => state.terminalStateByThreadId);
   const clearTerminalState = useTerminalStateStore((state) => state.clearTerminalState);
   const clearProjectDraftThreadId = useComposerDraftStore(
@@ -271,7 +274,7 @@ export default function Sidebar() {
   const clearProjectDraftThreadById = useComposerDraftStore(
     (store) => store.clearProjectDraftThreadById,
   );
-  const { defaultProjectId, openNewThread } = useNewThreadActions();
+  const { openNewThread } = useNewThreadActions();
   const navigate = useNavigate();
   const isOnSettings = useLocation({ select: (loc) => loc.pathname === "/settings" });
   const { settings: appSettings } = useAppSettings();
@@ -820,7 +823,7 @@ export default function Sidebar() {
       const api = readNativeApi();
       if (!api) return;
       const clicked = await api.contextMenu.show(
-        [{ id: "delete", label: "Delete", destructive: true }],
+        [{ id: "delete", label: "Remove project", destructive: true }],
         position,
       );
       if (clicked !== "delete") return;
@@ -833,14 +836,12 @@ export default function Sidebar() {
         toastManager.add({
           type: "warning",
           title: "Project is not empty",
-          description: "Delete all threads in this project before deleting it.",
+          description: "Delete all threads in this project before removing it.",
         });
         return;
       }
 
-      const confirmed = await api.dialogs.confirm(
-        [`Delete project "${project.name}"?`, "This action cannot be undone."].join("\n"),
-      );
+      const confirmed = await api.dialogs.confirm(`Remove project "${project.name}"?`);
       if (!confirmed) return;
 
       try {
@@ -855,11 +856,11 @@ export default function Sidebar() {
           projectId,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error deleting project.";
+        const message = error instanceof Error ? error.message : "Unknown error removing project.";
         console.error("Failed to remove project", { projectId, error });
         toastManager.add({
           type: "error",
-          title: `Failed to delete "${project.name}"`,
+          title: `Failed to remove "${project.name}"`,
           description: message,
         });
       }
@@ -948,36 +949,6 @@ export default function Sidebar() {
   );
 
   useEffect(() => {
-    const onWindowKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && selectedThreadIds.size > 0) {
-        event.preventDefault();
-        clearSelection();
-        return;
-      }
-
-      const activeThread = routeThreadId
-        ? threads.find((thread) => thread.id === routeThreadId)
-        : undefined;
-      const activeDraftThread = routeThreadId ? getDraftThread(routeThreadId) : null;
-      if (isChatNewLocalShortcut(event, keybindings)) {
-        const projectId = defaultProjectId;
-        if (!projectId) return;
-        event.preventDefault();
-        void openNewThread(projectId);
-        return;
-      }
-
-      if (!isChatNewShortcut(event, keybindings)) return;
-      const projectId = activeThread?.projectId ?? activeDraftThread?.projectId ?? defaultProjectId;
-      if (!projectId) return;
-      event.preventDefault();
-      void openNewThread(projectId, {
-        branch: activeThread?.branch ?? activeDraftThread?.branch ?? null,
-        worktreePath: activeThread?.worktreePath ?? activeDraftThread?.worktreePath ?? null,
-        envMode: activeDraftThread?.envMode ?? (activeThread?.worktreePath ? "worktree" : "local"),
-      });
-    };
-
     const onMouseDown = (event: globalThis.MouseEvent) => {
       if (selectedThreadIds.size === 0) return;
       const target = event.target instanceof HTMLElement ? event.target : null;
@@ -985,22 +956,11 @@ export default function Sidebar() {
       clearSelection();
     };
 
-    window.addEventListener("keydown", onWindowKeyDown);
     window.addEventListener("mousedown", onMouseDown);
     return () => {
-      window.removeEventListener("keydown", onWindowKeyDown);
       window.removeEventListener("mousedown", onMouseDown);
     };
-  }, [
-    clearSelection,
-    defaultProjectId,
-    getDraftThread,
-    keybindings,
-    openNewThread,
-    routeThreadId,
-    selectedThreadIds.size,
-    threads,
-  ]);
+  }, [clearSelection, selectedThreadIds.size]);
 
   useEffect(() => {
     if (!isElectron) return;
@@ -1151,7 +1111,7 @@ export default function Sidebar() {
       <Tooltip>
         <TooltipTrigger
           render={
-            <div className="flex min-w-0 flex-1 items-center gap-1 mt-1.5 ml-1 cursor-pointer">
+            <div className="flex min-w-0 flex-1 items-center gap-1 ml-1 cursor-pointer">
               <T3Wordmark />
               <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
                 Code
@@ -1441,13 +1401,10 @@ export default function Sidebar() {
                                       render={<div role="button" tabIndex={0} />}
                                       size="sm"
                                       isActive={isActive}
-                                      className={`h-7 w-full translate-x-0 cursor-default justify-start px-2 text-left select-none hover:bg-accent hover:text-foreground focus-visible:ring-0 ${
-                                        isSelected
-                                          ? "bg-primary/15 text-foreground dark:bg-primary/10"
-                                          : isActive
-                                            ? "bg-accent/85 text-foreground font-medium dark:bg-accent/55"
-                                            : "text-muted-foreground"
-                                      }`}
+                                      className={resolveThreadRowClassName({
+                                        isActive,
+                                        isSelected,
+                                      })}
                                       onClick={(event) => {
                                         handleThreadClick(
                                           event,
@@ -1585,7 +1542,7 @@ export default function Sidebar() {
                                         <span
                                           className={`text-[10px] ${
                                             isHighlighted
-                                              ? "text-foreground/65"
+                                              ? "text-foreground/72 dark:text-foreground/82"
                                               : "text-muted-foreground/40"
                                           }`}
                                         >

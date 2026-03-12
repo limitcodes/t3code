@@ -117,7 +117,7 @@ import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   DEFAULT_THREAD_TERMINAL_ID,
-  MAX_THREAD_TERMINAL_COUNT,
+  MAX_TERMINALS_PER_GROUP,
   type ChatMessage,
   type Thread,
   type TurnDiffFileChange,
@@ -228,6 +228,7 @@ import {
   type AppServiceTier,
   useAppSettings,
 } from "../appSettings";
+import { isTerminalFocused } from "../lib/terminalFocus";
 import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
@@ -242,6 +243,8 @@ import { clamp } from "effect/Number";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./ComposerPromptEditor";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
+import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { LastInvokedScriptByProjectSchema } from "./ChatView.logic";
 
 function formatMessageMeta(createdAt: string, duration: string | null): string {
   if (!duration) return formatTimestamp(createdAt);
@@ -360,24 +363,6 @@ type ProviderCustomModelSettings = {
   readonly customCopilotModels: readonly string[];
   readonly customKimiModels: readonly string[];
 };
-
-function readLastInvokedScriptByProjectFromStorage(): Record<string, string> {
-  const stored = localStorage.getItem(LAST_INVOKED_SCRIPT_BY_PROJECT_KEY);
-  if (!stored) return {};
-
-  try {
-    const parsed: unknown = JSON.parse(stored);
-    if (!parsed || typeof parsed !== "object") return {};
-    return Object.fromEntries(
-      Object.entries(parsed).filter(
-        (entry): entry is [string, string] =>
-          typeof entry[0] === "string" && typeof entry[1] === "string",
-      ),
-    );
-  } catch {
-    return {};
-  }
-}
 
 function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
   if (tone === "error") return "text-rose-300/50 dark:text-rose-300/50";
@@ -800,9 +785,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [composerTrigger, setComposerTrigger] = useState<ComposerTrigger | null>(() =>
     detectComposerTrigger(prompt, prompt.length),
   );
-  const [lastInvokedScriptByProjectId, setLastInvokedScriptByProjectId] = useState<
-    Record<string, string>
-  >(() => readLastInvokedScriptByProjectFromStorage());
+  const [lastInvokedScriptByProjectId, setLastInvokedScriptByProjectId] = useLocalStorage(
+    LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
+    {},
+    LastInvokedScriptByProjectSchema,
+  );
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const [messagesScrollElement, setMessagesScrollElement] = useState<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -1289,23 +1276,46 @@ export default function ChatView({ threadId }: ChatViewProps) {
     pendingUserInputs.length > 0 ||
     (showPlanFollowUpPrompt && activeProposedPlan !== null);
   const composerFooterHasWideActions = showPlanFollowUpPrompt || activePendingProgress !== null;
+  const lastSyncedPendingInputRef = useRef<{
+    requestId: string | null;
+    questionId: string | null;
+  } | null>(null);
   useEffect(() => {
-    if (!activePendingProgress) {
+    const nextCustomAnswer = activePendingProgress?.customAnswer;
+    if (typeof nextCustomAnswer !== "string") {
+      lastSyncedPendingInputRef.current = null;
       return;
     }
-    promptRef.current = activePendingProgress.customAnswer;
-    setComposerCursor(activePendingProgress.customAnswer.length);
+    const nextRequestId = activePendingUserInput?.requestId ?? null;
+    const nextQuestionId = activePendingProgress?.activeQuestion?.id ?? null;
+    const questionChanged =
+      lastSyncedPendingInputRef.current?.requestId !== nextRequestId ||
+      lastSyncedPendingInputRef.current?.questionId !== nextQuestionId;
+    const textChangedExternally = promptRef.current !== nextCustomAnswer;
+
+    lastSyncedPendingInputRef.current = {
+      requestId: nextRequestId,
+      questionId: nextQuestionId,
+    };
+
+    if (!questionChanged && !textChangedExternally) {
+      return;
+    }
+
+    promptRef.current = nextCustomAnswer;
+    setComposerCursor(nextCustomAnswer.length);
     setComposerTrigger(
       detectComposerTrigger(
-        activePendingProgress.customAnswer,
-        expandCollapsedComposerCursor(
-          activePendingProgress.customAnswer,
-          activePendingProgress.customAnswer.length,
-        ),
+        nextCustomAnswer,
+        expandCollapsedComposerCursor(nextCustomAnswer, nextCustomAnswer.length),
       ),
     );
     setComposerHighlightedItemId(null);
-  }, [activePendingProgress, activePendingUserInput?.requestId]);
+  }, [
+    activePendingProgress?.customAnswer,
+    activePendingUserInput?.requestId,
+    activePendingProgress?.activeQuestion?.id,
+  ]);
   useEffect(() => {
     attachmentPreviewHandoffByMessageIdRef.current = attachmentPreviewHandoffByMessageId;
   }, [attachmentPreviewHandoffByMessageId]);
@@ -1715,7 +1725,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       replace: true,
       search: (previous) => {
         const rest = stripDiffSearchParams(previous);
-        return diffOpen ? rest : { ...rest, diff: "1" };
+        return diffOpen ? { ...rest, diff: undefined } : { ...rest, diff: "1" };
       },
     });
   }, [diffOpen, navigate, threadId]);
@@ -1725,7 +1735,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
     (activeThread.messages.length > 0 ||
       (activeThread.session !== null && activeThread.session.status !== "closed")),
   );
-  const hasReachedTerminalLimit = terminalState.terminalIds.length >= MAX_THREAD_TERMINAL_COUNT;
+  const activeTerminalGroup =
+    terminalState.terminalGroups.find(
+      (group) => group.id === terminalState.activeTerminalGroupId,
+    ) ??
+    terminalState.terminalGroups.find((group) =>
+      group.terminalIds.includes(terminalState.activeTerminalId),
+    ) ??
+    null;
+  const hasReachedSplitLimit =
+    (activeTerminalGroup?.terminalIds.length ?? 0) >= MAX_TERMINALS_PER_GROUP;
   const setThreadError = useCallback(
     (targetThreadId: ThreadId | null, error: string | null) => {
       if (!targetThreadId) return;
@@ -1773,17 +1792,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
     setTerminalOpen(!terminalState.terminalOpen);
   }, [activeThreadId, setTerminalOpen, terminalState.terminalOpen]);
   const splitTerminal = useCallback(() => {
-    if (!activeThreadId || hasReachedTerminalLimit) return;
+    if (!activeThreadId || hasReachedSplitLimit) return;
     const terminalId = `terminal-${randomUUID()}`;
     storeSplitTerminal(activeThreadId, terminalId);
     setTerminalFocusRequestId((value) => value + 1);
-  }, [activeThreadId, storeSplitTerminal, hasReachedTerminalLimit]);
+  }, [activeThreadId, hasReachedSplitLimit, storeSplitTerminal]);
   const createNewTerminal = useCallback(() => {
-    if (!activeThreadId || hasReachedTerminalLimit) return;
+    if (!activeThreadId) return;
     const terminalId = `terminal-${randomUUID()}`;
     storeNewTerminal(activeThreadId, terminalId);
     setTerminalFocusRequestId((value) => value + 1);
-  }, [activeThreadId, storeNewTerminal, hasReachedTerminalLimit]);
+  }, [activeThreadId, storeNewTerminal]);
   const activateTerminal = useCallback(
     (terminalId: string) => {
       if (!activeThreadId) return;
@@ -1846,8 +1865,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         DEFAULT_THREAD_TERMINAL_ID;
       const isBaseTerminalBusy = terminalState.runningTerminalIds.includes(baseTerminalId);
       const wantsNewTerminal = Boolean(options?.preferNewTerminal) || isBaseTerminalBusy;
-      const shouldCreateNewTerminal =
-        wantsNewTerminal && terminalState.terminalIds.length < MAX_THREAD_TERMINAL_COUNT;
+      const shouldCreateNewTerminal = wantsNewTerminal;
       const targetTerminalId = shouldCreateNewTerminal
         ? `terminal-${randomUUID()}`
         : baseTerminalId;
@@ -1907,6 +1925,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       setThreadError,
       storeNewTerminal,
       storeSetActiveTerminal,
+      setLastInvokedScriptByProjectId,
       terminalState.activeTerminalId,
       terminalState.runningTerminalIds,
       terminalState.terminalIds,
@@ -2148,21 +2167,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
     },
     [serverThread],
   );
-
-  useEffect(() => {
-    try {
-      if (Object.keys(lastInvokedScriptByProjectId).length === 0) {
-        localStorage.removeItem(LAST_INVOKED_SCRIPT_BY_PROJECT_KEY);
-        return;
-      }
-      localStorage.setItem(
-        LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
-        JSON.stringify(lastInvokedScriptByProjectId),
-      );
-    } catch {
-      // Ignore storage write failures (private mode, quota exceeded, etc.)
-    }
-  }, [lastInvokedScriptByProjectId]);
 
   // Auto-scroll on new messages
   const messageCount = timelineMessages.length;
@@ -2642,13 +2646,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, [activeThreadId, focusComposer, terminalState.terminalOpen]);
 
   useEffect(() => {
-    const isTerminalFocused = (): boolean => {
-      const activeElement = document.activeElement;
-      if (!(activeElement instanceof HTMLElement)) return false;
-      if (activeElement.classList.contains("xterm-helper-textarea")) return true;
-      return activeElement.closest(".thread-terminal-drawer .xterm") !== null;
-    };
-
     const handler = (event: globalThis.KeyboardEvent) => {
       if (!activeThreadId || event.defaultPrevented) return;
       const shortcutContext = {
@@ -4400,7 +4397,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                       ) : phase === "running" ? (
                         <button
                           type="button"
-                          className="app-interactive-motion flex size-8 items-center justify-center rounded-full bg-rose-500/90 text-white hover:bg-rose-500 hover:scale-105 motion-reduce:hover:scale-100 sm:h-8 sm:w-8"
+                          className="app-interactive-motion flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 motion-reduce:hover:scale-100 sm:h-8 sm:w-8"
                           onClick={() => void onInterrupt()}
                           aria-label="Stop generation"
                         >
