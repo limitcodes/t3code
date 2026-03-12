@@ -112,6 +112,8 @@ let cachedPersistedSnapshot: AppSettings = {
   ...DEFAULT_APP_SETTINGS,
   ...DEFAULT_SECRET_SETTINGS,
 };
+let cachedSnapshot = DEFAULT_APP_SETTINGS;
+let cachedSnapshotKey = "";
 let cachedSecretSettings: Pick<AppSettings, "kimiApiKey"> = DEFAULT_SECRET_SETTINGS;
 let hasHydratedDesktopSecrets = false;
 let secretHydrationPromise: Promise<void> | null = null;
@@ -380,7 +382,14 @@ export function getAppSettingsSnapshot(): AppSettings {
     }
   }
 
-  return mergeSettingsWithSecrets(cachedPersistedSnapshot);
+  const snapshotKey = `${cachedRawSettings ?? ""}\u0000${cachedSecretSettings.kimiApiKey}`;
+  if (cachedSnapshotKey === snapshotKey) {
+    return cachedSnapshot;
+  }
+
+  cachedSnapshot = mergeSettingsWithSecrets(cachedPersistedSnapshot);
+  cachedSnapshotKey = snapshotKey;
+  return cachedSnapshot;
 }
 
 function persistSettings(next: AppSettings): void {

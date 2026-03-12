@@ -153,4 +153,29 @@ describe("sanitizePersistedAppSettingsForStorage", () => {
     expect(sanitized.kimiApiKey).toBe("");
     expect(sanitized.kimiBinaryPath).toBe(getAppSettingsSnapshot().kimiBinaryPath);
   });
+
+  it("returns a stable snapshot reference when storage has not changed", () => {
+    const localStorage = {
+      getItem: () => null,
+      setItem: () => undefined,
+    };
+
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        localStorage,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      },
+    });
+
+    try {
+      const first = getAppSettingsSnapshot();
+      const second = getAppSettingsSnapshot();
+
+      expect(second).toBe(first);
+    } finally {
+      Reflect.deleteProperty(globalThis, "window");
+    }
+  });
 });
