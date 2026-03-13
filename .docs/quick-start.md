@@ -17,9 +17,32 @@ bun run start
 # Build a shareable macOS .dmg (arm64 by default)
 bun run dist:desktop:dmg
 
+# Build a specific desktop artifact for your current platform
+bun run dist:desktop:artifact -- --platform mac --target dmg --arch arm64
+
+# Linux x64 AppImage
+bun run dist:desktop:linux
+
+# Windows x64 installer
+bun run dist:desktop:win
+
 # Or from any project directory after publishing:
 npx t3
 ```
+
+## Local desktop release builds
+
+If you want to cut your own desktop build instead of waiting for somebody else to publish a release:
+
+- Run `bun install` once at the repo root.
+- Use the script for your platform:
+  - macOS Apple Silicon: `bun run dist:desktop:dmg:arm64`
+  - macOS Intel: `bun run dist:desktop:dmg:x64`
+  - Linux x64: `bun run dist:desktop:linux`
+  - Windows x64: `bun run dist:desktop:win`
+- Find the output in `./release`.
+
+Use the matching host OS when possible. Cross-platform packaging is not the default workflow for this repo.
 
 ## After startup
 

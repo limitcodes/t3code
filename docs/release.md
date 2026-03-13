@@ -2,6 +2,49 @@
 
 This document covers how to run desktop releases from one tag, first without signing, then with signing.
 
+## Local desktop builds for your own machine
+
+If you just want a release artifact for your own platform, you do not need to publish a GitHub release.
+
+Start from the repo root:
+
+```bash
+bun install
+```
+
+Build commands:
+
+- macOS Apple Silicon DMG:
+  - `bun run dist:desktop:dmg:arm64`
+- macOS Intel DMG:
+  - `bun run dist:desktop:dmg:x64`
+- Linux x64 AppImage:
+  - `bun run dist:desktop:linux`
+- Windows x64 NSIS installer:
+  - `bun run dist:desktop:win`
+
+All artifacts are written to `./release`.
+
+If you need a custom target or arch, use the generic entrypoint:
+
+```bash
+bun run dist:desktop:artifact -- --platform <mac|linux|win> --target <target> --arch <arch>
+```
+
+Examples:
+
+- `bun run dist:desktop:artifact -- --platform mac --target dmg --arch universal`
+- `bun run dist:desktop:artifact -- --platform linux --target AppImage --arch arm64`
+- `bun run dist:desktop:artifact -- --platform win --target nsis --arch x64`
+
+Practical guidance:
+
+- Build macOS artifacts on macOS.
+- Build Linux artifacts on Linux.
+- Build Windows artifacts on Windows.
+- Unsigned local builds are the normal default.
+- Add `--signed` only when you have the signing credentials configured for that platform.
+
 ## What the workflow does
 
 - Trigger: push tag matching `v*.*.*`.

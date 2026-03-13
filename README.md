@@ -35,6 +35,37 @@ Install the [desktop app from the Releases page](https://github.com/pingdotgg/t3
 
 Once the app is running, choose Codex, GitHub Copilot, or Kimi Code from the provider picker before starting a session.
 
+## Build your own desktop release
+
+If you do not want to wait for a GitHub release, you can build a desktop artifact locally for your own platform.
+
+```bash
+# Install dependencies first
+bun install
+
+# macOS Apple Silicon DMG
+bun run dist:desktop:dmg:arm64
+
+# macOS Intel DMG
+bun run dist:desktop:dmg:x64
+
+# Linux x64 AppImage
+bun run dist:desktop:linux
+
+# Windows x64 installer
+bun run dist:desktop:win
+```
+
+Artifacts are written to `./release`.
+
+Use the matching host OS when possible:
+
+- Build macOS artifacts on macOS.
+- Build Linux artifacts on Linux.
+- Build Windows artifacts on Windows.
+
+For the full local packaging and release notes, see [docs/release.md](docs/release.md) and [.docs/scripts.md](.docs/scripts.md).
+
 ## Provider settings and model controls
 
 Open Settings in the app to configure provider-specific behavior on the current device.
