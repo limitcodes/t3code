@@ -1,8 +1,20 @@
 const DEFAULT_LOOPBACK_HOST = "127.0.0.1";
 const DEFAULT_LOOPBACK_ORIGIN_HOSTS = ["localhost", "127.0.0.1", "::1"] as const;
+const DESKTOP_APP_ORIGIN = "cut3://app";
 
 function normalizeHost(host: string): string {
   return host.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+}
+
+function canonicalizeOrigin(value: string | URL): string {
+  const parsed = typeof value === "string" ? new URL(value) : value;
+  if (parsed.origin !== "null") {
+    return parsed.origin;
+  }
+  if (parsed.host.length > 0) {
+    return `${parsed.protocol}//${parsed.host}`;
+  }
+  return parsed.href.replace(/\/$/, "");
 }
 
 export function isWildcardHost(host: string | undefined): boolean {
@@ -32,6 +44,7 @@ export function buildAllowedWebSocketOrigins(params: {
   port: number;
   devUrl: URL | undefined;
   authToken: string | undefined;
+  mode?: "web" | "desktop";
 }): ReadonlySet<string> {
   const origins = new Set<string>();
 
@@ -41,8 +54,7 @@ export function buildAllowedWebSocketOrigins(params: {
     }
 
     try {
-      const origin = typeof value === "string" ? new URL(value).origin : value.origin;
-      origins.add(origin);
+      origins.add(canonicalizeOrigin(value));
     } catch {
       // Ignore malformed origins here and reject them during handshake validation.
     }
@@ -63,6 +75,9 @@ export function buildAllowedWebSocketOrigins(params: {
   }
 
   addOrigin(params.devUrl);
+  if (params.mode === "desktop") {
+    origins.add(DESKTOP_APP_ORIGIN);
+  }
   return origins;
 }
 
@@ -81,7 +96,7 @@ export function isAllowedWebSocketOrigin(params: {
   }
 
   try {
-    return allowedOrigins.has(new URL(originHeader).origin);
+    return allowedOrigins.has(canonicalizeOrigin(originHeader));
   } catch {
     return false;
   }

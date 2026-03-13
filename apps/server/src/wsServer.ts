@@ -1283,6 +1283,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       port: listeningPort,
       devUrl,
       authToken,
+      mode: serverConfig.mode,
     });
     if (authToken) {
       let providedToken: string | null = null;

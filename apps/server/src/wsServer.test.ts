@@ -2049,4 +2049,19 @@ describe("WebSocket Server", () => {
     const welcome = await waitForPush(authorizedWs, WS_CHANNELS.serverWelcome);
     expect(welcome.channel).toBe(WS_CHANNELS.serverWelcome);
   });
+
+  it("allows the packaged desktop websocket origin when auth is enabled", async () => {
+    server = await createTestServer({
+      cwd: "/test",
+      mode: "desktop",
+      authToken: "secret-token",
+    });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const authorizedWs = await connectWs(port, "secret-token", "cut3://app");
+    connections.push(authorizedWs);
+    const welcome = await waitForPush(authorizedWs, WS_CHANNELS.serverWelcome);
+    expect(welcome.channel).toBe(WS_CHANNELS.serverWelcome);
+  });
 });

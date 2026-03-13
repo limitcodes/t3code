@@ -64,4 +64,23 @@ describe("networking", () => {
       }),
     ).toBe(true);
   });
+
+  it("allows the packaged desktop app origin in desktop mode", () => {
+    const allowedOrigins = buildAllowedWebSocketOrigins({
+      host: "127.0.0.1",
+      port: 3773,
+      devUrl: undefined,
+      authToken: "secret-token",
+      mode: "desktop",
+    });
+
+    expect(
+      isAllowedWebSocketOrigin({
+        originHeader: "cut3://app",
+        allowedOrigins,
+        allowMissingOrigin: true,
+        allowNullOrigin: true,
+      }),
+    ).toBe(true);
+  });
 });
