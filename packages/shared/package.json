@@ -32,6 +32,10 @@
       "types": "./src/appRelease.ts",
       "import": "./src/appRelease.ts"
     },
+    "./copilotPlan": {
+      "types": "./src/copilotPlan.ts",
+      "import": "./src/copilotPlan.ts"
+    },
     "./wsAuth": {
       "types": "./src/wsAuth.ts",
       "import": "./src/wsAuth.ts"

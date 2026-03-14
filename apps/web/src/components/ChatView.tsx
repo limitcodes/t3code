@@ -32,6 +32,7 @@ import {
   getReasoningEffortOptions,
   normalizeModelSlug,
 } from "@t3tools/shared/model";
+import { formatGitHubCopilotPlan } from "@t3tools/shared/copilotPlan";
 import {
   memo,
   useCallback,
@@ -6324,15 +6325,6 @@ function formatCopilotQuotaDate(iso: string): string {
   }).format(new Date(parsed));
 }
 
-function formatCopilotPlan(plan: string | undefined): string | null {
-  if (!plan) return null;
-  return plan
-    .split(/[_\-\s]+/)
-    .filter(Boolean)
-    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-    .join(" ");
-}
-
 type AvailableCopilotUsage = {
   status: "available";
   source: "copilot_internal_user";
@@ -6398,7 +6390,7 @@ function renderCopilotUsageSummary(usage: ServerCopilotUsage | null, isLoading: 
     return null;
   }
 
-  const planLabel = formatCopilotPlan(usage.plan);
+  const planLabel = formatGitHubCopilotPlan(usage.plan);
 
   return (
     <div className="space-y-1 px-2 py-2.5">

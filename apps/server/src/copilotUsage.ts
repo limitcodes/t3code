@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import type { ServerCopilotUsage } from "@t3tools/contracts";
+import { formatGitHubCopilotPlan } from "@t3tools/shared/copilotPlan";
 
 const COPILOT_CONFIG_PATH = join(homedir(), ".copilot", "config.json");
 const COPILOT_USAGE_API_VERSION = "2025-04-01";
@@ -179,13 +180,14 @@ function parseCopilotUsageResponse(raw: unknown, fetchedAt: string): ServerCopil
   const percentRemaining =
     readNumber(premiumInteractions.percent_remaining) ??
     (entitlement > 0 ? Number(((remaining / entitlement) * 100).toFixed(1)) : 0);
+  const plan = formatGitHubCopilotPlan(readString(payload.copilot_plan));
 
   return {
     status: "available",
     source: "copilot_internal_user",
     fetchedAt,
     login,
-    ...(readString(payload.copilot_plan) ? { plan: readString(payload.copilot_plan)! } : {}),
+    ...(plan ? { plan } : {}),
     entitlement: clampNonNegative(entitlement),
     remaining: clampNonNegative(remaining),
     used,
