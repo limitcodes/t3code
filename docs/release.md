@@ -60,7 +60,7 @@ Practical guidance:
   - Desktop prerelease artifacts launch as `CUT3`, the same as stable builds.
   - The GitHub Release title is `CUT3 v<version>`.
 - Includes Electron auto-update metadata (for example `latest*.yml` and `*.blockmap`) in release assets.
-- Optionally publishes the CLI package (`apps/server`, npm package `t3`) when explicitly enabled.
+- Optionally publishes the CLI package (`apps/server`, npm package `cut3`) when explicitly enabled.
 - Signing is optional and auto-detected per platform from secrets.
 
 ## Desktop auto-update notes
@@ -97,7 +97,7 @@ bumping the package version to the release tag version.
 
 Checklist:
 
-1. Confirm npm org/user owns package `t3` (or rename package first if needed).
+1. Confirm npm org/user owns package `cut3`.
 2. In npm package settings, configure Trusted Publisher:
    - Provider: GitHub Actions
    - Repository: this repo

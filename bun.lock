@@ -42,10 +42,10 @@
       },
     },
     "apps/server": {
-      "name": "t3",
+      "name": "cut3",
       "version": "0.0.12-fork.5",
       "bin": {
-        "t3": "./dist/index.mjs",
+        "cut3": "./dist/index.mjs",
       },
       "dependencies": {
         "@agentclientprotocol/sdk": "^0.15.0",
@@ -1729,7 +1729,7 @@
 
     "svgo": ["svgo@4.0.1", "", { "dependencies": { "commander": "^11.1.0", "css-select": "^5.1.0", "css-tree": "^3.0.1", "css-what": "^6.1.0", "csso": "^5.0.5", "picocolors": "^1.1.1", "sax": "^1.5.0" }, "bin": "./bin/svgo.js" }, "sha512-XDpWUOPC6FEibaLzjfe0ucaV0YrOjYotGJO1WpF0Zd+n6ZGEQUsSugaoLq9QkEZtAfQIxT42UChcssDVPP3+/w=="],
 
-    "t3": ["t3@workspace:apps/server"],
+    "cut3": ["cut3@workspace:apps/server"],
 
     "tabbable": ["tabbable@6.4.0", "", {}, "sha512-05PUHKSNE8ou2dwIxTngl4EzcnsCDZGJ/iCLtDflR/SHB/ny14rXc+qU5P4mG9JkusiV7EivzY9Mhm55AzAvCg=="],
 

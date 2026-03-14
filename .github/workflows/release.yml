@@ -64,7 +64,7 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             publish_cli="${{ github.event.inputs.publish_cli }}"
           else
-            publish_cli="${{ vars.T3CODE_PUBLISH_CLI || 'false' }}"
+            publish_cli="${{ vars.CUT3_PUBLISH_CLI || 'false' }}"
           fi
 
           if [[ "$publish_cli" == "true" ]]; then
@@ -270,7 +270,7 @@ jobs:
         run: node scripts/update-release-package-versions.ts "${{ needs.preflight.outputs.version }}"
 
       - name: Build CLI package
-        run: bun run build --filter=@t3tools/web --filter=t3
+        run: bun run build --filter=@t3tools/web --filter=cut3
 
       - name: Publish CLI package
         run: node apps/server/scripts/cli.ts publish --tag latest --app-version "${{ needs.preflight.outputs.version }}" --verbose

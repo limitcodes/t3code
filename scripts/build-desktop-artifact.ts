@@ -482,7 +482,7 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       target: [target],
       icon: "icon.png",
       category: "Development",
-      executableName: "t3-code",
+      executableName: "cut3",
       desktop: {
         entry: {
           StartupWMClass: productName,
@@ -637,7 +637,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.copy(stageResourcesDir, path.join(stageAppDir, "apps/desktop/prod-resources"));
 
   const stagePackageJson: StagePackageJson = {
-    name: "t3-code-desktop",
+    name: "cut3-desktop",
     version: appVersion,
     buildVersion: appVersion,
     cut3CommitHash: commitHash,

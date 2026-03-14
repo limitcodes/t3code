@@ -26,7 +26,13 @@ CUT3 is a minimal web GUI for coding agents. It currently supports Codex, GitHub
 > - [Kimi Code CLI](https://www.kimi.com/code/docs/en/)
 
 ```bash
-npx t3
+bun run start
+```
+
+Published npm package:
+
+```bash
+bunx cut3
 ```
 
 You can also just install the desktop app. It's cooler.
