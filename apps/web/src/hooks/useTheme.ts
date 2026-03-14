@@ -2,6 +2,10 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { getAppSettingsSnapshot, subscribeAppSettings } from "../appSettings";
 import {
+  applyGlobalAppearanceSettings,
+  clearAppliedAppearanceCssVariables,
+} from "../lib/appearanceTheme";
+import {
   isCustomThemeEnabled,
   resolveAppliedCustomTheme,
   resolvePinnedCustomThemeAppearance,
@@ -90,6 +94,7 @@ function applyTheme(
   const activeCustomTheme = resolveAppliedCustomTheme(customThemeId, baseResolvedTheme);
   const resolvedTheme = activeCustomTheme?.appearance ?? baseResolvedTheme;
   const isDark = resolvedTheme === "dark";
+  const settings = getAppSettingsSnapshot();
 
   document.documentElement.classList.toggle("dark", isDark);
   if (activeCustomTheme) {
@@ -97,6 +102,17 @@ function applyTheme(
   } else {
     delete document.documentElement.dataset.theme;
   }
+
+  clearAppliedAppearanceCssVariables();
+  applyGlobalAppearanceSettings({
+    appearance: resolvedTheme,
+    customThemeEnabled: activeCustomTheme !== null,
+    themeConfig:
+      resolvedTheme === "dark" ? settings.darkAppearanceTheme : settings.lightAppearanceTheme,
+    uiFontSizePx: settings.uiFontSizePx,
+    usePointerCursors: settings.usePointerCursors,
+  });
+
   syncDesktopTheme(theme);
   if (suppressTransitions) {
     // Force a reflow so the no-transitions class takes effect before removal
@@ -190,7 +206,7 @@ export function useTheme() {
     systemDark: false,
     customThemeId: "none" as const,
   }));
-  const theme = resolveSyncedThemeSelection(snapshot.theme, snapshot.customThemeId);
+  const theme = snapshot.theme;
   const customThemeId = snapshot.customThemeId;
 
   const baseResolvedTheme = resolveThemeAppearance(theme, snapshot.systemDark);
@@ -212,15 +228,8 @@ export function useTheme() {
       return;
     }
 
-    if (theme !== snapshot.theme) {
-      window.localStorage.setItem(STORAGE_KEY, theme);
-      applyTheme(theme, customThemeId, true);
-      emitChange();
-      return;
-    }
-
     applyTheme(theme, customThemeId);
-  }, [customThemeId, snapshot.theme, theme]);
+  }, [customThemeId, theme]);
 
   return {
     theme,

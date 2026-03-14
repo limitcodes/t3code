@@ -7,6 +7,11 @@ CUT3 stores app settings locally on the current device. Open **Settings** in the
 The **Appearance** area currently includes:
 
 - **Theme preference**: `System`, `Light`, or `Dark`
+- **Per-appearance base theme editor**:
+  - separate saved base settings for light mode and dark mode
+  - editable accent, background, foreground, contrast, UI font stack, code font stack, and UI font size
+  - optional translucent sidebar surface and pointer cursor toggle
+  - import/export as JSON for the selected light or dark theme
 - **Chat background image**:
   - add/change/remove a background image for the chat surface
   - adjust its `Fade` and `Blur`
@@ -16,7 +21,7 @@ The **Appearance** area currently includes:
   - built-in presets including Catppuccin variants, GitHub Dark variants, Nord, Visual Studio 2017 Dark, T3 Chat Theme, and Lilac
   - presets apply app UI colors, diff colors, and syntax-highlighting theme selection together
 
-The chat background image controls are separate from the color theme preset. You can mix the default theme or any preset with a custom chat background.
+The chat background image controls are separate from the base appearance editor and custom theme preset. You can mix the default theme or any preset with a custom chat background.
 
 ## Provider overrides
 

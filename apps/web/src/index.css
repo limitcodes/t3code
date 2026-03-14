@@ -170,6 +170,10 @@
 
 :root {
   color-scheme: light;
+  --app-ui-font-size: 16px;
+  --font-ui:
+    "DM Sans", "Geist Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
   --font-user-message:
     "Geist Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Inter, "Segoe UI",
     Roboto, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
@@ -202,6 +206,15 @@
   --success-foreground: var(--color-emerald-700);
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-700);
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-ring: var(--ring);
+  --cut3-sidebar-backdrop-filter: none;
+  --cut3-sidebar-surface: var(--sidebar);
+  --cut3-sidebar-surface-solid: var(--sidebar);
 
   @variant dark {
     color-scheme: dark;
@@ -230,6 +243,15 @@
     --success-foreground: var(--color-emerald-400);
     --warning: var(--color-amber-500);
     --warning-foreground: var(--color-amber-400);
+    --sidebar: var(--card);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-border: var(--border);
+    --sidebar-accent: var(--accent);
+    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-ring: var(--ring);
+    --cut3-sidebar-backdrop-filter: none;
+    --cut3-sidebar-surface: var(--sidebar);
+    --cut3-sidebar-surface-solid: var(--sidebar);
   }
 }
 
@@ -552,13 +574,7 @@
 }
 
 body {
-  font-family:
-    "DM Sans",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    system-ui,
-    sans-serif;
+  font-family: var(--font-ui);
   margin: 0;
   padding: 0;
   min-height: 100vh;
@@ -568,6 +584,7 @@ html,
 body,
 #root {
   height: 100%;
+  font-size: var(--app-ui-font-size);
   width: 100%;
   max-width: 100%;
   overflow-y: hidden;
@@ -600,8 +617,49 @@ code {
 }
 
 textarea,
-input {
-  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+input,
+select,
+button {
+  font-family: var(--font-ui);
+}
+
+[data-slot="sidebar-inner"],
+[data-slot="sidebar"][data-mobile="true"] {
+  backdrop-filter: var(--cut3-sidebar-backdrop-filter);
+}
+
+html[data-sidebar-translucent="on"] [data-slot="sidebar-inner"],
+html[data-sidebar-translucent="on"] [data-slot="sidebar"][data-mobile="true"] {
+  background: var(--cut3-sidebar-surface) !important;
+}
+
+@media (min-width: 48rem) {
+  html[data-sidebar-translucent="on"]
+    [data-slot="sidebar"][data-state="expanded"]
+    [data-slot="sidebar-gap"] {
+    width: 0 !important;
+  }
+
+  html[data-sidebar-translucent="on"]
+    [data-slot="sidebar"][data-state="expanded"]
+    [data-slot="sidebar-inner"] {
+    box-shadow:
+      0 20px 48px rgb(0 0 0 / 16%),
+      inset 0 1px 0 rgb(255 255 255 / 10%);
+  }
+}
+
+[data-slot="sidebar-container"] {
+  background: transparent;
+}
+
+html[data-pointer-cursors="off"] a[href],
+html[data-pointer-cursors="off"] button:not(:disabled):not([data-slot="sidebar-rail"]),
+html[data-pointer-cursors="off"] summary,
+html[data-pointer-cursors="off"] [role="button"],
+html[data-pointer-cursors="off"] [data-slot="button"],
+html[data-pointer-cursors="off"] [data-slot="sidebar-trigger"] {
+  cursor: default !important;
 }
 
 /* Window drag region (frameless titlebar) */

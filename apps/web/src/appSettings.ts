@@ -8,6 +8,14 @@ import {
   normalizeModelSlug,
 } from "@t3tools/shared/model";
 
+import {
+  clampUiFontSizePx,
+  DEFAULT_DARK_APPEARANCE_THEME,
+  DEFAULT_LIGHT_APPEARANCE_THEME,
+  DEFAULT_UI_FONT_SIZE_PX,
+  DEFAULT_USE_POINTER_CURSORS,
+  normalizeAppearanceThemeConfig,
+} from "./lib/appearanceTheme";
 import { CUSTOM_THEME_IDS } from "./lib/customThemes";
 
 const APP_SETTINGS_STORAGE_KEY = "cut3:app-settings:v1";
@@ -43,6 +51,15 @@ const AppServiceTierSchema = Schema.Literals(["auto", "fast", "flex"]);
 const CustomThemeIdSchema = Schema.Literals(CUSTOM_THEME_IDS);
 const MODELS_WITH_FAST_SUPPORT = new Set(["gpt-5.4"]);
 const PROVIDERS_WITH_CUSTOM_MODEL_SUPPORT = new Set<ProviderKind>(["copilot", "kimi"]);
+const AppearanceThemeConfigSchema = Schema.Struct({
+  accent: Schema.String.check(Schema.isMaxLength(32)),
+  background: Schema.String.check(Schema.isMaxLength(32)),
+  foreground: Schema.String.check(Schema.isMaxLength(32)),
+  uiFont: Schema.String.check(Schema.isMaxLength(256)),
+  codeFont: Schema.String.check(Schema.isMaxLength(256)),
+  translucentSidebar: Schema.Boolean,
+  contrast: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
+});
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
   copilot: new Set(getModelOptions("copilot").map((option) => option.slug)),
@@ -69,6 +86,18 @@ const AppSettingsSchema = Schema.Struct({
     Schema.withConstructorDefault(() => Option.some(false)),
   ),
   customThemeId: CustomThemeIdSchema.pipe(Schema.withConstructorDefault(() => Option.some("none"))),
+  lightAppearanceTheme: AppearanceThemeConfigSchema.pipe(
+    Schema.withConstructorDefault(() => Option.some(DEFAULT_LIGHT_APPEARANCE_THEME)),
+  ),
+  darkAppearanceTheme: AppearanceThemeConfigSchema.pipe(
+    Schema.withConstructorDefault(() => Option.some(DEFAULT_DARK_APPEARANCE_THEME)),
+  ),
+  usePointerCursors: Schema.Boolean.pipe(
+    Schema.withConstructorDefault(() => Option.some(DEFAULT_USE_POINTER_CURSORS)),
+  ),
+  uiFontSizePx: Schema.Int.check(Schema.isBetween({ minimum: 12, maximum: 18 })).pipe(
+    Schema.withConstructorDefault(() => Option.some(DEFAULT_UI_FONT_SIZE_PX)),
+  ),
   chatBackgroundImageDataUrl: Schema.String.check(
     Schema.isMaxLength(MAX_CHAT_BACKGROUND_IMAGE_DATA_URL_LENGTH),
   ).pipe(Schema.withConstructorDefault(() => Option.some(""))),
@@ -196,6 +225,10 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     ...settings,
     customThemeId,
     enableCatppuccinTheme: customThemeId === "catppuccin-auto",
+    lightAppearanceTheme: normalizeAppearanceThemeConfig(settings.lightAppearanceTheme, "light"),
+    darkAppearanceTheme: normalizeAppearanceThemeConfig(settings.darkAppearanceTheme, "dark"),
+    uiFontSizePx: clampUiFontSizePx(settings.uiFontSizePx),
+    usePointerCursors: Boolean(settings.usePointerCursors),
     customCodexModels: normalizeCustomModelSlugs(settings.customCodexModels, "codex"),
     customCopilotModels: normalizeCustomModelSlugs(settings.customCopilotModels, "copilot"),
     customKimiModels: normalizeCustomModelSlugs(settings.customKimiModels, "kimi"),

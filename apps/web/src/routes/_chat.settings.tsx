@@ -19,16 +19,10 @@ import {
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { isElectron } from "../env";
 import { useChatBackgroundImage } from "../hooks/useChatBackgroundImage";
-import { useTheme } from "../hooks/useTheme";
 import { removeChatBackgroundBlob, saveChatBackgroundBlob } from "../lib/chatBackgroundStorage";
-import {
-  CUSTOM_THEME_OPTIONS,
-  CUSTOM_THEME_OPTIONS_BY_ID,
-  isCustomThemeId,
-  type CustomThemeId,
-} from "../lib/customThemes";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
+import { AppearanceSettingsSection } from "../components/AppearanceSettingsSection";
 import ThreadNewButton from "../components/ThreadNewButton";
 import ThreadSidebarToggle from "../components/ThreadSidebarToggle";
 import { Button } from "../components/ui/button";
@@ -43,24 +37,6 @@ import {
 import { Switch } from "../components/ui/switch";
 import { APP_VERSION } from "../branding";
 import { SidebarInset } from "~/components/ui/sidebar";
-
-const THEME_OPTIONS = [
-  {
-    value: "system",
-    label: "System",
-    description: "Match your OS appearance setting.",
-  },
-  {
-    value: "light",
-    label: "Light",
-    description: "Always use the light theme.",
-  },
-  {
-    value: "dark",
-    label: "Dark",
-    description: "Always use the dark theme.",
-  },
-] as const;
 
 const MODEL_PROVIDER_SETTINGS: Array<{
   provider: ProviderKind;
@@ -85,9 +61,6 @@ const MODEL_PROVIDER_SETTINGS: Array<{
   },
 ] as const;
 
-const VISIBLE_CUSTOM_THEME_PRESET_LABELS = CUSTOM_THEME_OPTIONS.filter(
-  (option) => option.id !== "none" && option.id !== "catppuccin-auto",
-).map((option) => option.label);
 const CHAT_BACKGROUND_IMAGE_SIZE_LIMIT_LABEL = `${Math.round(
   MAX_CHAT_BACKGROUND_IMAGE_BYTES / (1024 * 1024),
 )}MB`;
@@ -116,23 +89,6 @@ function readFileAsDataUrl(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
-
-function formatNaturalList(values: readonly string[]): string {
-  if (values.length <= 1) {
-    return values[0] ?? "";
-  }
-
-  if (values.length === 2) {
-    return `${values[0]} and ${values[1]}`;
-  }
-
-  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
-}
-const TIMESTAMP_FORMAT_LABELS = {
-  locale: "System default",
-  "12-hour": "12-hour",
-  "24-hour": "24-hour",
-} as const;
 
 function getCustomModelsForProvider(
   settings: ReturnType<typeof useAppSettings>["settings"],
@@ -180,15 +136,6 @@ function patchCustomModels(provider: ProviderKind, models: string[]) {
 }
 
 function SettingsRouteView() {
-  const {
-    theme,
-    setTheme,
-    resolvedTheme,
-    baseResolvedTheme,
-    customThemeId,
-    customThemeEnabled,
-    activeCustomTheme,
-  } = useTheme();
   const { settings, defaults, updateSettings } = useAppSettings();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const [isOpeningKeybindings, setIsOpeningKeybindings] = useState(false);
@@ -214,7 +161,6 @@ function SettingsRouteView() {
   const kimiApiKey = settings.kimiApiKey;
   const codexServiceTier = settings.codexServiceTier;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
-  const selectedCustomTheme = CUSTOM_THEME_OPTIONS_BY_ID[customThemeId];
   const availableEditors = serverConfigQuery.data?.availableEditors;
   const hasChatBackgroundImage =
     settings.chatBackgroundImageAssetId.length > 0 ||
@@ -433,95 +379,7 @@ function SettingsRouteView() {
               </div>
             </header>
 
-            <section className="rounded-2xl border border-border bg-card p-5">
-              <div className="mb-4">
-                <h2 className="text-sm font-medium text-foreground">Appearance</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Choose how CUT3 handles light and dark mode.
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2" role="radiogroup" aria-label="Theme preference">
-                  {THEME_OPTIONS.map((option) => {
-                    const selected = theme === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        className={`flex w-full items-start justify-between rounded-lg border px-3 py-2 text-left transition-colors ${
-                          selected
-                            ? "border-primary/60 bg-primary/8 text-foreground"
-                            : "border-border bg-background text-muted-foreground hover:bg-accent"
-                        }`}
-                        onClick={() => setTheme(option.value)}
-                      >
-                        <span className="flex flex-col">
-                          <span className="text-sm font-medium">{option.label}</span>
-                          <span className="text-xs">{option.description}</span>
-                        </span>
-                        {selected ? (
-                          <span className="rounded bg-primary/14 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
-                            Selected
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <p className="text-xs text-muted-foreground">
-                  Active appearance:{" "}
-                  <span className="font-medium text-foreground">{resolvedTheme}</span>
-                </p>
-
-                <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Timestamp format</p>
-                    <p className="text-xs text-muted-foreground">
-                      System default follows your browser or OS time format. <code>12-hour</code>{" "}
-                      and <code>24-hour</code> force the hour cycle.
-                    </p>
-                  </div>
-                  <Select
-                    value={settings.timestampFormat}
-                    onValueChange={(value) => {
-                      if (value !== "locale" && value !== "12-hour" && value !== "24-hour") return;
-                      updateSettings({
-                        timestampFormat: value,
-                      });
-                    }}
-                  >
-                    <SelectTrigger className="w-40" aria-label="Timestamp format">
-                      <SelectValue>{TIMESTAMP_FORMAT_LABELS[settings.timestampFormat]}</SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup align="end">
-                      <SelectItem value="locale">{TIMESTAMP_FORMAT_LABELS.locale}</SelectItem>
-                      <SelectItem value="12-hour">{TIMESTAMP_FORMAT_LABELS["12-hour"]}</SelectItem>
-                      <SelectItem value="24-hour">{TIMESTAMP_FORMAT_LABELS["24-hour"]}</SelectItem>
-                    </SelectPopup>
-                  </Select>
-                </div>
-
-                {settings.timestampFormat !== defaults.timestampFormat ? (
-                  <div className="flex justify-end">
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      onClick={() =>
-                        updateSettings({
-                          timestampFormat: defaults.timestampFormat,
-                        })
-                      }
-                    >
-                      Restore default
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            </section>
+            <AppearanceSettingsSection />
 
             <section className="rounded-2xl border border-border bg-card p-5">
               <div className="mb-4">
@@ -696,109 +554,6 @@ function SettingsRouteView() {
                   <p className="text-xs text-destructive">{chatBackgroundError}</p>
                 ) : null}
               </div>
-            </section>
-
-            <section className="rounded-2xl border border-border bg-card p-5">
-              <div className="mb-4">
-                <h2 className="text-sm font-medium text-foreground">Custom theme</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Choose a fully integrated preset for the app UI, diff panels, and
-                  syntax-highlighted code.
-                </p>
-              </div>
-
-              <label className="block space-y-1">
-                <span className="text-xs font-medium text-foreground">Theme preset</span>
-                <Select
-                  items={CUSTOM_THEME_OPTIONS.map((option) => ({
-                    label: option.label,
-                    value: option.id,
-                  }))}
-                  value={customThemeId}
-                  onValueChange={(value) => {
-                    if (!value || !isCustomThemeId(value)) return;
-                    updateSettings({ customThemeId: value as CustomThemeId });
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectPopup alignItemWithTrigger={false}>
-                    {CUSTOM_THEME_OPTIONS.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>
-                        <div className="flex min-w-0 flex-col gap-0.5">
-                          <span className="truncate text-sm text-foreground">{option.label}</span>
-                          <span className="truncate text-muted-foreground text-xs">
-                            {option.description}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </Select>
-                <span className="text-xs text-muted-foreground">
-                  {selectedCustomTheme.description}
-                </span>
-              </label>
-
-              <div className="mt-4 rounded-lg border border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
-                <p>
-                  Status:{" "}
-                  <span className="font-medium text-foreground">
-                    {customThemeEnabled ? "Enabled" : "Disabled"}
-                  </span>
-                </p>
-                <p className="mt-1">
-                  Selected preset:{" "}
-                  <span className="font-medium text-foreground">{selectedCustomTheme.label}</span>
-                </p>
-                <p className="mt-1">
-                  Applied theme:{" "}
-                  <span className="font-medium text-foreground">
-                    {activeCustomTheme?.label ?? "Default theme"}
-                  </span>
-                </p>
-                <p className="mt-1">
-                  Effective appearance:{" "}
-                  <span className="font-medium text-foreground">{resolvedTheme}</span>
-                </p>
-                <p className="mt-1">
-                  Base appearance setting:{" "}
-                  <span className="font-medium text-foreground">{baseResolvedTheme}</span>
-                </p>
-                {customThemeId === "catppuccin-auto" ? (
-                  <p className="mt-1">
-                    Auto-selected Catppuccin flavor:{" "}
-                    <span className="font-medium text-foreground">
-                      {activeCustomTheme?.label ?? "Default theme"}
-                    </span>
-                  </p>
-                ) : null}
-                {activeCustomTheme && activeCustomTheme.appearance !== baseResolvedTheme ? (
-                  <p className="mt-1">
-                    This preset overrides the base appearance while it is active.
-                  </p>
-                ) : null}
-                <p className="mt-1">
-                  Presets currently include {formatNaturalList(VISIBLE_CUSTOM_THEME_PRESET_LABELS)}.
-                </p>
-              </div>
-
-              {settings.customThemeId !== defaults.customThemeId ? (
-                <div className="mt-3 flex justify-end">
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() =>
-                      updateSettings({
-                        customThemeId: defaults.customThemeId,
-                      })
-                    }
-                  >
-                    Restore default
-                  </Button>
-                </div>
-              ) : null}
             </section>
 
             <section className="rounded-2xl border border-border bg-card p-5">
