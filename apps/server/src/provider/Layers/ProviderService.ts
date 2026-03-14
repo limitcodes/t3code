@@ -453,25 +453,12 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           adapter.listSessions(),
         );
         const activeSessions = sessionsByProvider.flatMap((sessions) => sessions);
-        const persistedBindings = yield* directory.listThreadIds().pipe(
-          Effect.flatMap((threadIds) =>
-            Effect.forEach(
-              threadIds,
-              (threadId) =>
-                directory
-                  .getBinding(threadId)
-                  .pipe(Effect.orElseSucceed(() => Option.none<ProviderRuntimeBinding>())),
-              { concurrency: "unbounded" },
-            ),
-          ),
-          Effect.orElseSucceed(() => [] as Array<Option.Option<ProviderRuntimeBinding>>),
+        const persistedBindings = yield* directory.listBindings().pipe(
+          Effect.orElseSucceed(() => [] as ReadonlyArray<ProviderRuntimeBinding>),
         );
         const bindingsByThreadId = new Map<ThreadId, ProviderRuntimeBinding>();
-        for (const bindingOption of persistedBindings) {
-          const binding = Option.getOrUndefined(bindingOption);
-          if (binding) {
-            bindingsByThreadId.set(binding.threadId, binding);
-          }
+        for (const binding of persistedBindings) {
+          bindingsByThreadId.set(binding.threadId, binding);
         }
 
         return activeSessions.map((session) => {
@@ -521,26 +508,22 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
 
     const runStopAll = () =>
       Effect.gen(function* () {
-        const threadIds = yield* directory.listThreadIds();
+        const bindings = yield* directory.listBindings();
         yield* Effect.forEach(adapters, (adapter) => adapter.stopAll()).pipe(Effect.asVoid);
-        yield* Effect.forEach(threadIds, (threadId) =>
-          directory.getProvider(threadId).pipe(
-            Effect.flatMap((provider) =>
-              directory.upsert({
-                threadId,
-                provider,
-                status: "stopped",
-                runtimePayload: {
-                  activeTurnId: null,
-                  lastRuntimeEvent: "provider.stopAll",
-                  lastRuntimeEventAt: new Date().toISOString(),
-                },
-              }),
-            ),
-          ),
+        yield* Effect.forEach(bindings, (binding) =>
+          directory.upsert({
+            threadId: binding.threadId,
+            provider: binding.provider,
+            status: "stopped",
+            runtimePayload: {
+              activeTurnId: null,
+              lastRuntimeEvent: "provider.stopAll",
+              lastRuntimeEventAt: new Date().toISOString(),
+            },
+          }),
         ).pipe(Effect.asVoid);
         yield* analytics.record("provider.sessions.stopped_all", {
-          sessionCount: threadIds.length,
+          sessionCount: bindings.length,
         });
         yield* analytics.flush;
       });

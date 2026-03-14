@@ -65,6 +65,16 @@ export interface ProviderSessionRuntimeRepositoryShape {
   >;
 
   /**
+   * List all persisted thread ids.
+   *
+   * Avoids decoding runtime JSON payloads when only canonical ids are needed.
+   */
+  readonly listThreadIds: () => Effect.Effect<
+    ReadonlyArray<ThreadId>,
+    ProviderSessionRuntimeRepositoryError
+  >;
+
+  /**
    * Delete provider runtime state by canonical thread id.
    */
   readonly deleteByThreadId: (

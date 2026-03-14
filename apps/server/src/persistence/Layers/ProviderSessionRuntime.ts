@@ -113,6 +113,20 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
       `,
   });
 
+  const listRuntimeThreadIds = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: Schema.Struct({
+      threadId: ThreadId,
+    }),
+    execute: () =>
+      sql`
+        SELECT
+          thread_id AS "threadId"
+        FROM provider_session_runtime
+        ORDER BY last_seen_at ASC, thread_id ASC
+      `,
+  });
+
   const deleteRuntimeByThreadId = SqlSchema.void({
     Request: DeleteRuntimeRequestSchema,
     execute: ({ threadId }) =>
@@ -185,10 +199,22 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
       ),
     );
 
+  const listThreadIds: ProviderSessionRuntimeRepositoryShape["listThreadIds"] = () =>
+    listRuntimeThreadIds(undefined).pipe(
+      Effect.mapError(
+        toPersistenceSqlOrDecodeError(
+          "ProviderSessionRuntimeRepository.listThreadIds:query",
+          "ProviderSessionRuntimeRepository.listThreadIds:decodeRows",
+        ),
+      ),
+      Effect.map((rows) => rows.map((row) => row.threadId)),
+    );
+
   return {
     upsert,
     getByThreadId,
     list,
+    listThreadIds,
     deleteByThreadId,
   } satisfies ProviderSessionRuntimeRepositoryShape;
 });

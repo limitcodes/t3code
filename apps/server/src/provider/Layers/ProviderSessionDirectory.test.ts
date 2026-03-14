@@ -131,6 +131,25 @@ it.layer(makeDirectoryLayer(SqlitePersistenceMemory))("ProviderSessionDirectoryL
           activeTurnId: "turn-1",
         });
       }
+
+      const bindings = yield* directory.listBindings();
+      assert.deepEqual(bindings, [
+        {
+          threadId,
+          provider: "codex",
+          adapterKey: "codex",
+          runtimeMode: "full-access",
+          status: "running",
+          resumeCursor: {
+            threadId: "provider-thread-runtime",
+          },
+          runtimePayload: {
+            cwd: "/tmp/project",
+            model: "gpt-5-codex",
+            activeTurnId: "turn-1",
+          },
+        },
+      ]);
     }));
 
   it("resets adapterKey to the new provider when provider changes without an explicit adapter key", () =>
@@ -213,8 +232,8 @@ it.layer(makeDirectoryLayer(SqlitePersistenceMemory))("ProviderSessionDirectoryL
 
       yield* runtimeRepository.upsert({
         threadId,
-        providerName: "copilot",
-        adapterKey: "copilot",
+        providerName: "cursor",
+        adapterKey: "cursor",
         runtimeMode: "full-access",
         status: "running",
         lastSeenAt: new Date().toISOString(),
@@ -224,5 +243,8 @@ it.layer(makeDirectoryLayer(SqlitePersistenceMemory))("ProviderSessionDirectoryL
 
       const binding = yield* directory.getBinding(threadId);
       assert.equal(Option.isNone(binding), true);
+
+      const bindings = yield* directory.listBindings();
+      assert.deepEqual(bindings, []);
     }));
 });
