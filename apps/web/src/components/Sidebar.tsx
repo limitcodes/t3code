@@ -80,6 +80,7 @@ import {
   SidebarMenuSubItem,
   SidebarSeparator,
   SidebarTrigger,
+  useSidebar,
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
@@ -217,6 +218,7 @@ function SortableProjectItem({
 }
 
 export default function Sidebar() {
+  const { isMobile, setOpenMobile } = useSidebar();
   const projects = useStore((store) => store.projects);
   const threads = useStore((store) => store.threads);
   const markThreadUnread = useStore((store) => store.markThreadUnread);
@@ -275,6 +277,18 @@ export default function Sidebar() {
   const projectCwdById = useMemo(
     () => new Map(projects.map((project) => [project.id, project.cwd] as const)),
     [projects],
+  );
+  const navigateToThread = useCallback(
+    (threadId: ThreadId) => {
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+      void navigate({
+        to: "/$threadId",
+        params: { threadId },
+      });
+    },
+    [isMobile, navigate, setOpenMobile],
   );
   const threadGitTargets = useMemo(
     () =>
@@ -357,12 +371,9 @@ export default function Sidebar() {
         })[0];
       if (!latestThread) return;
 
-      void navigate({
-        to: "/$threadId",
-        params: { threadId: latestThread.id },
-      });
+      navigateToThread(latestThread.id);
     },
-    [navigate, threads],
+    [navigateToThread, threads],
   );
 
   const addProjectFromPath = useCallback(
@@ -802,14 +813,11 @@ export default function Sidebar() {
         clearSelection();
       }
       setSelectionAnchor(threadId);
-      void navigate({
-        to: "/$threadId",
-        params: { threadId },
-      });
+      navigateToThread(threadId);
     },
     [
       clearSelection,
-      navigate,
+      navigateToThread,
       rangeSelectTo,
       selectedThreadIds.size,
       setSelectionAnchor,
@@ -1419,10 +1427,7 @@ export default function Sidebar() {
                                           clearSelection();
                                         }
                                         setSelectionAnchor(thread.id);
-                                        void navigate({
-                                          to: "/$threadId",
-                                          params: { threadId: thread.id },
-                                        });
+                                        navigateToThread(thread.id);
                                       }}
                                       onContextMenu={(event) => {
                                         event.preventDefault();
