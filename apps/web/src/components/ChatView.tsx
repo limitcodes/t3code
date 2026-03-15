@@ -193,6 +193,7 @@ import {
   OpenAI,
   OpenCodeIcon,
   VisualStudioCode,
+  VisualStudioCodeInsiders,
   Zed,
 } from "./Icons";
 import { cn, isMacPlatform, isWindowsPlatform, randomUUID } from "~/lib/utils";
@@ -7100,6 +7101,11 @@ const OpenInPicker = memo(function OpenInPicker({
         label: "VS Code",
         Icon: VisualStudioCode,
         value: "vscode",
+      },
+      {
+        label: "VS Code Insiders",
+        Icon: VisualStudioCodeInsiders,
+        value: "vscode-insiders",
       },
       {
         label: "Zed",
