@@ -2086,16 +2086,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const availableEditors = serverConfigQuery.data?.availableEditors ?? EMPTY_AVAILABLE_EDITORS;
   const providerStatuses = serverConfigQuery.data?.providers ?? EMPTY_PROVIDER_STATUSES;
   const activeProviderStatus = useMemo(() => {
-    const status = resolveVisibleProviderStatusForChat({
+    return resolveVisibleProviderStatusForChat({
       providerStatuses,
       selectedProvider,
       sessionProvider,
       sessionStatus: activeThread?.session?.orchestrationStatus ?? null,
+      selectedModelUsesOpenRouter,
     });
-    if (status?.provider === "codex" && selectedModelUsesOpenRouter) {
-      return null;
-    }
-    return status;
   }, [
     activeThread?.session?.orchestrationStatus,
     providerStatuses,

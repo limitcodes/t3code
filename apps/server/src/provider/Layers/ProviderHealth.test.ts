@@ -239,7 +239,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.authStatus, "unknown");
         assert.strictEqual(
           status.message,
-          "Could not verify Kimi Code CLI authentication non-interactively. Run `kimi login` or add a Kimi API key in Settings if session start fails.",
+          "Could not verify Kimi Code CLI authentication non-interactively. Start `kimi` and run `/login`, or add a Kimi API key in Settings if session start fails.",
         );
       }).pipe(
         Effect.provide(

@@ -29,7 +29,7 @@ CUT3 desktop wraps the web UI in Electron and starts a desktop-scoped `t3` backe
 ## State and logs
 
 - Desktop state defaults to `CUT3_STATE_DIR` when it is set.
-- Without an override, desktop state lives under a release-specific directory inside `~/.t3/`.
+- Without an override, desktop state lives under `~/.t3/cut3`.
 - Packaged builds capture main-process logs in `<state-dir>/logs/desktop-main.log` and backend child logs in `<state-dir>/logs/server-child.log`.
 - Development launches forward main-process bootstrap headers plus backend stdout and stderr to the parent terminal instead of rotating packaged log files.
 

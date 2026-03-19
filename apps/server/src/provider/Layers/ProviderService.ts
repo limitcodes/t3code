@@ -31,7 +31,10 @@ import {
   type ProviderRuntimeBinding,
 } from "../Services/ProviderSessionDirectory.ts";
 import {
+  deriveProviderSecretRequirements,
+  hydrateProviderOptionsWithEnvironment,
   sanitizeProviderOptionsForPersistence,
+  sanitizeProviderSecretRequirementsRecord,
   sanitizeProviderOptionsRecordForPersistence,
 } from "../providerOptions.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
@@ -95,23 +98,38 @@ function toRuntimePayloadFromSession(
   extra?: { readonly providerOptions?: ProviderSessionStartInput["providerOptions"] },
 ): Record<string, unknown> {
   const providerOptions = sanitizeProviderOptionsForPersistence(extra?.providerOptions);
+  const providerSecretRequirements = deriveProviderSecretRequirements(extra?.providerOptions);
   return {
     cwd: session.cwd ?? null,
     model: session.model ?? null,
     activeTurnId: session.activeTurnId ?? null,
     lastError: session.lastError ?? null,
     ...(providerOptions !== undefined ? { providerOptions } : {}),
+    ...(providerSecretRequirements !== undefined ? { providerSecretRequirements } : {}),
   };
 }
 
 function readPersistedProviderOptions(
   runtimePayload: ProviderRuntimeBinding["runtimePayload"],
-): Record<string, unknown> | undefined {
+): ProviderSessionStartInput["providerOptions"] | undefined {
   if (!runtimePayload || typeof runtimePayload !== "object" || Array.isArray(runtimePayload)) {
     return undefined;
   }
   const raw = "providerOptions" in runtimePayload ? runtimePayload.providerOptions : undefined;
   return sanitizeProviderOptionsRecordForPersistence(raw);
+}
+
+function readPersistedProviderSecretRequirements(
+  runtimePayload: ProviderRuntimeBinding["runtimePayload"],
+) {
+  if (!runtimePayload || typeof runtimePayload !== "object" || Array.isArray(runtimePayload)) {
+    return undefined;
+  }
+  const raw =
+    "providerSecretRequirements" in runtimePayload
+      ? runtimePayload.providerSecretRequirements
+      : undefined;
+  return sanitizeProviderSecretRequirementsRecord(raw);
 }
 
 function readPersistedCwd(
@@ -218,12 +236,27 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
 
         const persistedCwd = readPersistedCwd(input.binding.runtimePayload);
         const persistedProviderOptions = readPersistedProviderOptions(input.binding.runtimePayload);
+        const persistedProviderSecretRequirements = readPersistedProviderSecretRequirements(
+          input.binding.runtimePayload,
+        );
+        const recoveredProviderOptions = hydrateProviderOptionsWithEnvironment({
+          providerOptions: persistedProviderOptions,
+          secretRequirements: persistedProviderSecretRequirements,
+        });
+        if (recoveredProviderOptions.missingSecrets.length > 0) {
+          return yield* toValidationError(
+            input.operation,
+            `Cannot recover thread '${input.binding.threadId}' because it depends on transient provider secrets (${recoveredProviderOptions.missingSecrets.join(", ")}) that were not persisted. Re-send a turn from CUT3 or export the required environment variables before restarting CUT3.`,
+          );
+        }
 
         const resumed = yield* adapter.startSession({
           threadId: input.binding.threadId,
           provider: input.binding.provider,
           ...(persistedCwd ? { cwd: persistedCwd } : {}),
-          ...(persistedProviderOptions ? { providerOptions: persistedProviderOptions } : {}),
+          ...(recoveredProviderOptions.providerOptions
+            ? { providerOptions: recoveredProviderOptions.providerOptions }
+            : {}),
           ...(hasResumeCursor ? { resumeCursor: input.binding.resumeCursor } : {}),
           runtimeMode: input.binding.runtimeMode ?? "full-access",
         });

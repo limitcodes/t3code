@@ -44,6 +44,7 @@ The **Providers** section supports local overrides for each provider runtime:
 - **Kimi Code**
   - Custom binary path
   - Optional API key stored locally and injected into new Kimi CLI sessions
+  - Without an API key, authenticate in Kimi Code CLI itself by starting `kimi` and running `/login`
 
 Leave a binary field blank to use the provider executable from your `PATH`.
 

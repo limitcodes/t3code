@@ -5,6 +5,7 @@ import readline from "node:readline";
 
 import {
   ApprovalRequestId,
+  DEFAULT_MODEL_BY_PROVIDER,
   EventId,
   OPENROUTER_FREE_ROUTER_MODEL,
   ProviderItemId,
@@ -177,8 +178,9 @@ const RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS = [
   "unknown thread",
   "does not exist",
 ];
-const CODEX_DEFAULT_MODEL = "gpt-5.3-codex";
+const CODEX_DEFAULT_FALLBACK_MODEL = DEFAULT_MODEL_BY_PROVIDER.codex;
 const CODEX_SPARK_MODEL = "gpt-5.3-codex-spark";
+const CODEX_SPARK_FALLBACK_MODEL = "gpt-5.3-codex";
 const CODEX_SPARK_DISABLED_PLAN_TYPES = new Set<CodexPlanType>(["free", "go", "plus"]);
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const OPENROUTER_ENV_KEY = "OPENROUTER_API_KEY";
@@ -413,7 +415,7 @@ export function resolveCodexModelForAccount(
     return model;
   }
 
-  return CODEX_DEFAULT_MODEL;
+  return CODEX_SPARK_FALLBACK_MODEL;
 }
 
 /**
@@ -594,7 +596,7 @@ function buildCodexCollaborationMode(input: {
   if (input.interactionMode === undefined) {
     return undefined;
   }
-  const model = normalizeCodexModelSlug(input.model) ?? "gpt-5.3-codex";
+  const model = normalizeCodexModelSlug(input.model) ?? CODEX_DEFAULT_FALLBACK_MODEL;
   if (isCodexOpenRouterModel(model)) {
     return undefined;
   }
@@ -812,23 +814,12 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       await this.sendRequest(context, "initialize", buildCodexInitializeParams());
 
       this.writeMessage(context, { method: "initialized" });
-      try {
-        const modelListResponse = await this.sendRequest(context, "model/list", {});
-        console.log("codex model/list response", modelListResponse);
-      } catch (error) {
-        console.log("codex model/list failed", error);
-      }
+      await this.sendRequest(context, "model/list", {}).catch(() => undefined);
       try {
         const accountReadResponse = await this.sendRequest(context, "account/read", {});
-        console.log("codex account/read response", accountReadResponse);
         context.account = readCodexAccountSnapshot(accountReadResponse);
-        console.log("codex subscription status", {
-          type: context.account.type,
-          planType: context.account.planType,
-          sparkEnabled: context.account.sparkEnabled,
-        });
-      } catch (error) {
-        console.log("codex account/read failed", error);
+      } catch {
+        // Account metadata is optional; keep the default snapshot if unavailable.
       }
 
       const normalizedModel = resolveCodexModelForAccount(

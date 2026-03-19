@@ -278,7 +278,7 @@ export function normalizeKimiStartErrorMessage(input: {
     ) ||
     (input.loginProbeOutput && isKimiLoginProbeUnauthenticated(input.loginProbeOutput))
   ) {
-    return "Kimi Code CLI requires authentication. Run `kimi login` and try again.";
+    return "Kimi Code CLI requires authentication. Start `kimi`, run `/login`, or add a Kimi API key in CUT3 Settings and try again.";
   }
 
   return input.rawMessage;

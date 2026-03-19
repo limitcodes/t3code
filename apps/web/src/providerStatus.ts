@@ -37,10 +37,15 @@ export function resolveVisibleProviderStatusForChat(input: {
   readonly selectedProvider: ProviderKind;
   readonly sessionProvider?: string | null;
   readonly sessionStatus?: OrchestrationSessionStatus | null;
+  readonly selectedModelUsesOpenRouter?: boolean;
 }): ServerProviderStatus | null {
   const status = resolveProviderStatusForChat(input);
   if (!status) {
     return null;
+  }
+
+  if (status.provider === "codex" && input.selectedModelUsesOpenRouter) {
+    return status;
   }
 
   if (status.provider === input.sessionProvider && isSuccessfulSessionStatus(input.sessionStatus)) {

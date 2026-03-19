@@ -5,6 +5,7 @@ import {
   formatHostForUrl,
   isAllowedWebSocketOrigin,
   isLoopbackHost,
+  isLoopbackRemoteAddress,
   isWildcardHost,
 } from "./networking";
 
@@ -19,6 +20,13 @@ describe("networking", () => {
     expect(isLoopbackHost("127.0.0.1")).toBe(true);
     expect(isLoopbackHost("localhost")).toBe(true);
     expect(isLoopbackHost("192.168.1.42")).toBe(false);
+  });
+
+  it("accepts loopback remote addresses including IPv4-mapped IPv6", () => {
+    expect(isLoopbackRemoteAddress("127.0.0.1")).toBe(true);
+    expect(isLoopbackRemoteAddress("::1")).toBe(true);
+    expect(isLoopbackRemoteAddress("::ffff:127.0.0.1")).toBe(true);
+    expect(isLoopbackRemoteAddress("192.168.1.42")).toBe(false);
   });
 
   it("does not trust arbitrary non-loopback origins when auth is disabled", () => {

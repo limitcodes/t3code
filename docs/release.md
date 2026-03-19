@@ -54,7 +54,7 @@ Recommended local verification before sharing artifacts:
 
 ## What the workflow does
 
-- Trigger: push tag matching `v*.*.*`.
+- Trigger: push tag matching `v*.*.*`, or run the workflow manually with `workflow_dispatch`.
 - Runs quality gates first: lint, typecheck, test.
 - Builds four artifacts in parallel:
   - macOS `arm64` DMG and ZIP, named `CUT3-macOS-<version>-<arch>.<ext>`

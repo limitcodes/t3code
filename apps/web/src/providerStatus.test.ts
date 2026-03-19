@@ -103,4 +103,27 @@ describe("resolveVisibleProviderStatusForChat", () => {
       }),
     ).toEqual(PROVIDER_STATUSES[2]);
   });
+
+  it("keeps Codex status visible for OpenRouter-routed chats", () => {
+    const codexWarningStatus: ServerProviderStatus[] = [
+      {
+        provider: "codex",
+        status: "warning",
+        available: true,
+        authStatus: "unknown",
+        checkedAt: "2026-03-08T00:00:00.000Z",
+        message: "Codex warning",
+      },
+    ];
+
+    expect(
+      resolveVisibleProviderStatusForChat({
+        providerStatuses: codexWarningStatus,
+        selectedProvider: "codex",
+        sessionProvider: "codex",
+        sessionStatus: "ready",
+        selectedModelUsesOpenRouter: true,
+      }),
+    ).toEqual(codexWarningStatus[0]);
+  });
 });

@@ -11,6 +11,9 @@
 - Keep developer docs aligned with the current `CUT3_*` dev-runner env names. `dev:web` and `dev:server` are expected to share one port offset per `CUT3_STATE_DIR`, so docs should not describe them as independently drifting port selections.
 - Keep provider availability claims in docs and onboarding copy aligned with `apps/web/src/session-logic.ts` and its tests.
 - Keep OpenCode auth UX aligned with the real CLI surface: credentials are managed via `opencode auth login/logout`, while CUT3 only inspects OpenCode state and forwards the shared OpenRouter key to new OpenCode sessions as `OPENROUTER_API_KEY` when configured.
+- Keep Kimi auth UX aligned with the official Kimi CLI docs: user-facing guidance should point to starting `kimi` and running `/login`, or to the CUT3 Kimi API key setting, instead of assuming undocumented standalone auth commands.
+- Keep server-side fallback models aligned with `DEFAULT_MODEL_BY_PROVIDER` in `packages/contracts/src/model.ts`; do not hardcode older Codex defaults in bootstraps, managers, or internal helpers.
+- Do not leave ad-hoc provider `console.log` debugging in runtime managers; provider/account payloads can leak into server logs.
 
 ## Project Snapshot
 

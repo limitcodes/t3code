@@ -152,7 +152,9 @@ describe("kimiAcpManager model availability", () => {
             '{"type":"waiting","message":"Waiting for user authorization...: Authorization is pending"}',
         },
       }),
-    ).toBe("Kimi Code CLI requires authentication. Run `kimi login` and try again.");
+    ).toBe(
+      "Kimi Code CLI requires authentication. Start `kimi`, run `/login`, or add a Kimi API key in CUT3 Settings and try again.",
+    );
   });
 
   it("rejects overlapping turns for the same Kimi session", async () => {

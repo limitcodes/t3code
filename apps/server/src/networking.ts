@@ -6,6 +6,11 @@ function normalizeHost(host: string): string {
   return host.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
 }
 
+function normalizeNetworkAddress(value: string): string {
+  const normalized = normalizeHost(value);
+  return normalized.startsWith("::ffff:") ? normalized.slice("::ffff:".length) : normalized;
+}
+
 function canonicalizeOrigin(value: string | URL): string {
   const parsed = typeof value === "string" ? new URL(value) : value;
   if (parsed.origin !== "null") {
@@ -30,9 +35,22 @@ export function isLoopbackHost(host: string | undefined): boolean {
     return false;
   }
 
-  const normalized = normalizeHost(host);
+  const normalized = normalizeNetworkAddress(host);
   return (
     normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized === "0:0:0:0:0:0:0:1" ||
+    /^127(?:\.\d{1,3}){3}$/.test(normalized)
+  );
+}
+
+export function isLoopbackRemoteAddress(address: string | undefined): boolean {
+  if (!address) {
+    return false;
+  }
+
+  const normalized = normalizeNetworkAddress(address);
+  return (
     normalized === "::1" ||
     normalized === "0:0:0:0:0:0:0:1" ||
     /^127(?:\.\d{1,3}){3}$/.test(normalized)

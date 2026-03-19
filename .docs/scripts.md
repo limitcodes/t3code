@@ -7,6 +7,7 @@
 - Separate `bun run dev:web` and `bun run dev:server` launches reuse one shared port offset per `CUT3_STATE_DIR`, so they stay on the same `377x` / `573x` pair instead of drifting apart.
 - Override server CLI-equivalent flags from root dev commands with `--`, for example:
   `bun run dev -- --state-dir ~/.t3/another-dev-state`
+- If you bind the web server off loopback, set `CUT3_AUTH_TOKEN`; unauthenticated off-box WebSocket clients are rejected.
 - `bun run start` — Runs the production server (serves built web app as static files).
 - `bun run build` — Builds contracts, web app, and server through Turbo.
 - `bun run typecheck` — Strict TypeScript checks for all packages.
@@ -22,8 +23,8 @@
 ## Desktop `.dmg` packaging notes
 
 - Default build is unsigned/not notarized for local sharing.
-- The DMG build uses `assets/macos-icon-1024.png` as the production app icon source.
-- Desktop production windows load the bundled UI from `t3://app/index.html` (not a `127.0.0.1` document URL).
+- The DMG build uses `assets/prod/black-macos-1024.png` as the production app icon source.
+- Desktop production windows load the bundled UI from `cut3://app/index.html` (not a `127.0.0.1` document URL).
 - Desktop packaging includes `apps/server/dist` (the `t3` backend) and starts it on loopback with an auth token for WebSocket/API traffic.
 - Your tester can still open it on macOS by right-clicking the app and choosing **Open** on first launch.
 - To keep staging files for debugging package contents, run: `bun run dist:desktop:dmg -- --keep-stage`

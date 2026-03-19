@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { DEFAULT_MODEL_BY_PROVIDER } from "@t3tools/contracts";
 import { Effect, FileSystem, Layer, Option, Path, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
@@ -17,7 +18,7 @@ import {
   TextGeneration,
 } from "../Services/TextGeneration.ts";
 
-const CODEX_MODEL = "gpt-5.3-codex";
+const CODEX_MODEL = DEFAULT_MODEL_BY_PROVIDER.codex;
 const CODEX_REASONING_EFFORT = "low";
 const CODEX_TIMEOUT_MS = 180_000;
 

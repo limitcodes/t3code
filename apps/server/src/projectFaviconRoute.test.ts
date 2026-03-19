@@ -168,4 +168,53 @@ describe("tryHandleProjectFaviconRequest", () => {
       expect(response.body).toContain('data-fallback="project-favicon"');
     });
   });
+
+  it("does not follow symlinked well-known favicon files outside the project root", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const projectDir = makeTempDir("cut3-favicon-route-symlink-root-");
+    const externalDir = makeTempDir("cut3-favicon-route-external-root-");
+    const externalIconPath = path.join(externalDir, "outside.svg");
+    fs.writeFileSync(externalIconPath, "<svg>outside</svg>", "utf8");
+    fs.symlinkSync(externalIconPath, path.join(projectDir, "favicon.svg"));
+
+    await withRouteServer(async (baseUrl) => {
+      const pathname = `/api/project-favicon?cwd=${encodeURIComponent(projectDir)}`;
+      const response = await request(baseUrl, pathname);
+      expect(response.statusCode).toBe(200);
+      expect(response.contentType).toContain("image/svg+xml");
+      expect(response.body).toContain('data-fallback="project-favicon"');
+      expect(response.body).not.toContain("outside");
+    });
+  });
+
+  it("does not follow symlinked icon href targets outside the project root", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const projectDir = makeTempDir("cut3-favicon-route-symlink-href-");
+    const externalDir = makeTempDir("cut3-favicon-route-external-href-");
+    const externalIconPath = path.join(externalDir, "outside.svg");
+    const linkedIconPath = path.join(projectDir, "public", "brand", "logo.svg");
+    fs.mkdirSync(path.dirname(linkedIconPath), { recursive: true });
+    fs.writeFileSync(externalIconPath, "<svg>outside-href</svg>", "utf8");
+    fs.symlinkSync(externalIconPath, linkedIconPath);
+    fs.writeFileSync(
+      path.join(projectDir, "index.html"),
+      '<link rel="icon" href="/brand/logo.svg">',
+      "utf8",
+    );
+
+    await withRouteServer(async (baseUrl) => {
+      const pathname = `/api/project-favicon?cwd=${encodeURIComponent(projectDir)}`;
+      const response = await request(baseUrl, pathname);
+      expect(response.statusCode).toBe(200);
+      expect(response.contentType).toContain("image/svg+xml");
+      expect(response.body).toContain('data-fallback="project-favicon"');
+      expect(response.body).not.toContain("outside-href");
+    });
+  });
 });

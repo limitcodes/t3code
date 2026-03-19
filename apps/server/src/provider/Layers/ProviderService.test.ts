@@ -20,7 +20,7 @@ import {
 import { it, assert, vi } from "@effect/vitest";
 import { assertFailure } from "@effect/vitest/utils";
 
-import { Effect, Fiber, Layer, Option, PubSub, Ref, Stream } from "effect";
+import { Effect, Fiber, Layer, Option, PubSub, Ref, Schema, Stream } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {
@@ -676,7 +676,98 @@ routing.layer("ProviderServiceLive routing", (it) => {
               binaryPath: "/tmp/kimi",
             },
           },
+          providerSecretRequirements: {
+            kimi: {
+              apiKey: true,
+            },
+          },
         });
+      }
+    }),
+  );
+
+  it.effect("rehydrates required recovery secrets from environment variables", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+
+      const previousOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
+      process.env.OPENROUTER_API_KEY = "sk-or-fresh";
+
+      try {
+        yield* provider.startSession(asThreadId("thread-recover-secret"), {
+          provider: "codex",
+          threadId: asThreadId("thread-recover-secret"),
+          runtimeMode: "full-access",
+          providerOptions: {
+            codex: {
+              binaryPath: "/tmp/codex",
+              openRouterApiKey: "sk-or-transient",
+            },
+          },
+        });
+
+        yield* routing.codex.stopSession(asThreadId("thread-recover-secret"));
+
+        yield* provider.sendTurn({
+          threadId: asThreadId("thread-recover-secret"),
+          input: "resume the session",
+        });
+
+        const recoveredStartInput = routing.codex.startSession.mock.calls.at(-1)?.[0];
+        assert.deepEqual(recoveredStartInput?.providerOptions, {
+          codex: {
+            binaryPath: "/tmp/codex",
+            openRouterApiKey: "sk-or-fresh",
+          },
+        });
+      } finally {
+        if (previousOpenRouterApiKey === undefined) {
+          delete process.env.OPENROUTER_API_KEY;
+        } else {
+          process.env.OPENROUTER_API_KEY = previousOpenRouterApiKey;
+        }
+      }
+    }),
+  );
+
+  it.effect("fails recovery with a clear error when required secrets are unavailable", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+
+      const previousOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENROUTER_API_KEY;
+
+      try {
+        yield* provider.startSession(asThreadId("thread-missing-secret"), {
+          provider: "codex",
+          threadId: asThreadId("thread-missing-secret"),
+          runtimeMode: "full-access",
+          providerOptions: {
+            codex: {
+              openRouterApiKey: "sk-or-transient",
+            },
+          },
+        });
+
+        yield* routing.codex.stopSession(asThreadId("thread-missing-secret"));
+
+        const failure = yield* provider
+          .sendTurn({
+            threadId: asThreadId("thread-missing-secret"),
+            input: "resume the session",
+          })
+          .pipe(Effect.flip);
+        assert.equal(Schema.is(ProviderValidationError)(failure), true);
+        if (Schema.is(ProviderValidationError)(failure)) {
+          assert.include(failure.issue, "OPENROUTER_API_KEY");
+          assert.include(failure.issue, "not persisted");
+        }
+      } finally {
+        if (previousOpenRouterApiKey === undefined) {
+          delete process.env.OPENROUTER_API_KEY;
+        } else {
+          process.env.OPENROUTER_API_KEY = previousOpenRouterApiKey;
+        }
       }
     }),
   );

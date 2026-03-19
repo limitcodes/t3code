@@ -107,65 +107,98 @@ export function tryHandleProjectFaviconRequest(url: URL, res: http.ServerRespons
     return true;
   }
 
-  const tryResolvedPaths = (paths: string[], index: number, onExhausted: () => void): void => {
-    if (index >= paths.length) {
-      onExhausted();
-      return;
-    }
-    const candidate = paths[index]!;
-    if (!isPathWithinProject(projectCwd, candidate)) {
-      tryResolvedPaths(paths, index + 1, onExhausted);
-      return;
-    }
-    fs.stat(candidate, (err, stats) => {
-      if (err || !stats?.isFile()) {
-        tryResolvedPaths(paths, index + 1, onExhausted);
-        return;
-      }
-      serveFaviconFile(candidate, res);
-    });
-  };
+  fs.realpath(projectCwd, (projectErr, resolvedProjectCwd) => {
+    const projectRoot = projectErr ? path.resolve(projectCwd) : resolvedProjectCwd;
 
-  const trySourceFiles = (index: number): void => {
-    if (index >= ICON_SOURCE_FILES.length) {
-      serveFallbackFavicon(res);
-      return;
-    }
-    const sourceFile = path.join(projectCwd, ICON_SOURCE_FILES[index]!);
-    fs.readFile(sourceFile, "utf8", (err, content) => {
-      if (err) {
-        trySourceFiles(index + 1);
+    const resolveExistingProjectFile = (
+      candidatePath: string,
+      onResolved: (resolvedPath: string | null) => void,
+    ): void => {
+      if (!isPathWithinProject(projectRoot, candidatePath)) {
+        onResolved(null);
         return;
       }
-      const href = extractIconHref(content);
-      if (!href) {
-        trySourceFiles(index + 1);
-        return;
-      }
-      const candidates = resolveIconHref(projectCwd, href);
-      tryResolvedPaths(candidates, 0, () => trySourceFiles(index + 1));
-    });
-  };
 
-  const tryCandidates = (index: number): void => {
-    if (index >= FAVICON_CANDIDATES.length) {
-      trySourceFiles(0);
-      return;
-    }
-    const candidate = path.join(projectCwd, FAVICON_CANDIDATES[index]!);
-    if (!isPathWithinProject(projectCwd, candidate)) {
-      tryCandidates(index + 1);
-      return;
-    }
-    fs.stat(candidate, (err, stats) => {
-      if (err || !stats?.isFile()) {
-        tryCandidates(index + 1);
+      fs.realpath(candidatePath, (candidateErr, resolvedCandidatePath) => {
+        if (candidateErr || !isPathWithinProject(projectRoot, resolvedCandidatePath)) {
+          onResolved(null);
+          return;
+        }
+
+        onResolved(resolvedCandidatePath);
+      });
+    };
+
+    const tryResolvedPaths = (paths: string[], index: number, onExhausted: () => void): void => {
+      if (index >= paths.length) {
+        onExhausted();
         return;
       }
-      serveFaviconFile(candidate, res);
-    });
-  };
+      const candidate = paths[index]!;
+      resolveExistingProjectFile(candidate, (resolvedCandidate) => {
+        if (!resolvedCandidate) {
+          tryResolvedPaths(paths, index + 1, onExhausted);
+          return;
+        }
+        fs.stat(resolvedCandidate, (err, stats) => {
+          if (err || !stats?.isFile()) {
+            tryResolvedPaths(paths, index + 1, onExhausted);
+            return;
+          }
+          serveFaviconFile(resolvedCandidate, res);
+        });
+      });
+    };
 
-  tryCandidates(0);
+    const trySourceFiles = (index: number): void => {
+      if (index >= ICON_SOURCE_FILES.length) {
+        serveFallbackFavicon(res);
+        return;
+      }
+      const sourceFile = path.join(projectRoot, ICON_SOURCE_FILES[index]!);
+      resolveExistingProjectFile(sourceFile, (resolvedSourceFile) => {
+        if (!resolvedSourceFile) {
+          trySourceFiles(index + 1);
+          return;
+        }
+        fs.readFile(resolvedSourceFile, "utf8", (err, content) => {
+          if (err) {
+            trySourceFiles(index + 1);
+            return;
+          }
+          const href = extractIconHref(content);
+          if (!href) {
+            trySourceFiles(index + 1);
+            return;
+          }
+          const candidates = resolveIconHref(projectRoot, href);
+          tryResolvedPaths(candidates, 0, () => trySourceFiles(index + 1));
+        });
+      });
+    };
+
+    const tryCandidates = (index: number): void => {
+      if (index >= FAVICON_CANDIDATES.length) {
+        trySourceFiles(0);
+        return;
+      }
+      const candidate = path.join(projectRoot, FAVICON_CANDIDATES[index]!);
+      resolveExistingProjectFile(candidate, (resolvedCandidate) => {
+        if (!resolvedCandidate) {
+          tryCandidates(index + 1);
+          return;
+        }
+        fs.stat(resolvedCandidate, (err, stats) => {
+          if (err || !stats?.isFile()) {
+            tryCandidates(index + 1);
+            return;
+          }
+          serveFaviconFile(resolvedCandidate, res);
+        });
+      });
+    };
+
+    tryCandidates(0);
+  });
   return true;
 }

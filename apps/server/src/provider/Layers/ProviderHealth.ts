@@ -557,7 +557,7 @@ export const checkKimiProviderStatus: Effect.Effect<
     authStatus: "unknown" as const,
     checkedAt,
     message:
-      "Could not verify Kimi Code CLI authentication non-interactively. Run `kimi login` or add a Kimi API key in Settings if session start fails.",
+      "Could not verify Kimi Code CLI authentication non-interactively. Start `kimi` and run `/login`, or add a Kimi API key in Settings if session start fails.",
   };
 });
 

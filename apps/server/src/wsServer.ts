@@ -15,6 +15,7 @@ import type * as acp from "@agentclientprotocol/sdk";
 import Mime from "@effect/platform-node/Mime";
 import {
   CommandId,
+  DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   type ClientOrchestrationCommand,
   type OrchestrationCommand,
@@ -91,7 +92,11 @@ import { makeServerReadiness } from "./wsServer/readiness.ts";
 import { decodeJsonResult, formatSchemaError } from "@t3tools/shared/schemaJson";
 import { getWsAuthToken, redactWsAuthToken } from "@t3tools/shared/wsAuth";
 import { listCodexMcpServerStatuses } from "./codexMcpServerStatus.ts";
-import { buildAllowedWebSocketOrigins, isAllowedWebSocketOrigin } from "./networking";
+import {
+  buildAllowedWebSocketOrigins,
+  isAllowedWebSocketOrigin,
+  isLoopbackRemoteAddress,
+} from "./networking";
 import { isWithinAllowedRoot, resolvePathForContainmentCheck } from "./pathAuthorization";
 import { ProviderAdapterProcessError, ProviderAdapterRequestError } from "./provider/Errors.ts";
 import { putTransientTurnStartProviderOptions } from "./provider/transientProviderOptions.ts";
@@ -946,7 +951,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         const createdAt = new Date().toISOString();
         bootstrapProjectId = ProjectId.makeUnsafe(crypto.randomUUID());
         const bootstrapProjectTitle = path.basename(cwd) || "project";
-        bootstrapProjectDefaultModel = "gpt-5-codex";
+        bootstrapProjectDefaultModel = DEFAULT_MODEL_BY_PROVIDER.codex;
         yield* orchestrationEngine.dispatch({
           type: "project.create",
           commandId: CommandId.makeUnsafe(crypto.randomUUID()),
@@ -958,7 +963,8 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         });
       } else {
         bootstrapProjectId = existingProject.id;
-        bootstrapProjectDefaultModel = existingProject.defaultModel ?? "gpt-5-codex";
+        bootstrapProjectDefaultModel =
+          existingProject.defaultModel ?? DEFAULT_MODEL_BY_PROVIDER.codex;
       }
 
       const existingThread = snapshot.threads.find(
@@ -1400,6 +1406,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         : port;
     const originHeader =
       typeof request.headers.origin === "string" ? request.headers.origin : undefined;
+    const remoteAddress = request.socket.remoteAddress;
     const allowedWebSocketOrigins = buildAllowedWebSocketOrigins({
       host,
       port: listeningPort,
@@ -1426,6 +1433,17 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         rejectUpgrade(socket, 401, "Unauthorized WebSocket connection");
         return;
       }
+    }
+
+    if (!authToken && serverConfig.mode === "web" && !isLoopbackRemoteAddress(remoteAddress)) {
+      console.warn("[ws] rejecting unauthenticated non-loopback websocket connection", {
+        mode: serverConfig.mode,
+        requestUrl: redactWsAuthToken(request.url),
+        originHeader,
+        remoteAddress,
+      });
+      rejectUpgrade(socket, 403, "Forbidden WebSocket connection");
+      return;
     }
 
     if (
