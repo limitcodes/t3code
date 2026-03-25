@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   collectSmokeTestFailures,
   createSmokeTestChildEnv,
+  createSmokeTestElectronArgs,
   DESKTOP_BACKEND_READY_PREFIX,
   FORCE_KILL_DELAY_MS,
   parseDesktopBackendReadyPort,
@@ -19,10 +20,18 @@ const mainJs = resolve(desktopDir, "dist-electron/main.js");
 
 console.log("\nLaunching Electron smoke test...");
 
-const child = spawn(electronBin, [mainJs], {
-  stdio: ["pipe", "pipe", "pipe"],
-  env: createSmokeTestChildEnv(process.env),
-});
+const smokeTestEnv = createSmokeTestChildEnv(process.env);
+const child = spawn(
+  electronBin,
+  createSmokeTestElectronArgs({
+    env: smokeTestEnv,
+    mainEntryPath: mainJs,
+  }),
+  {
+    stdio: ["pipe", "pipe", "pipe"],
+    env: smokeTestEnv,
+  },
+);
 
 let output = "";
 let stdoutBuffer = "";

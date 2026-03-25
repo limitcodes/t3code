@@ -4,6 +4,7 @@ import {
   DESKTOP_BACKEND_READY_PREFIX,
   collectSmokeTestFailures,
   createSmokeTestChildEnv,
+  createSmokeTestElectronArgs,
   parseDesktopBackendReadyPort,
 } from "./smoke-test-lib.mjs";
 
@@ -38,6 +39,28 @@ describe("createSmokeTestChildEnv", () => {
       PATH: "/usr/bin",
       ELECTRON_ENABLE_LOGGING: "1",
     });
+  });
+});
+
+describe("createSmokeTestElectronArgs", () => {
+  it("adds --no-sandbox for Linux CI smoke runs", () => {
+    expect(
+      createSmokeTestElectronArgs({
+        env: { CI: "true" },
+        mainEntryPath: "dist-electron/main.js",
+        platform: "linux",
+      }),
+    ).toEqual(["--no-sandbox", "dist-electron/main.js"]);
+  });
+
+  it("keeps local Linux smoke runs sandboxed", () => {
+    expect(
+      createSmokeTestElectronArgs({
+        env: {},
+        mainEntryPath: "dist-electron/main.js",
+        platform: "linux",
+      }),
+    ).toEqual(["dist-electron/main.js"]);
   });
 });
 

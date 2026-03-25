@@ -53,6 +53,15 @@ export function createSmokeTestChildEnv(env) {
   return childEnv;
 }
 
+export function createSmokeTestElectronArgs({ env, mainEntryPath, platform = process.platform }) {
+  const args = [mainEntryPath];
+  const runningInCi = env.CI === "true" || env.GITHUB_ACTIONS === "true";
+  if (platform === "linux" && runningInCi) {
+    args.unshift("--no-sandbox");
+  }
+  return args;
+}
+
 export function collectSmokeTestFailures(output) {
   return FATAL_PATTERNS.filter((pattern) => output.includes(pattern));
 }
