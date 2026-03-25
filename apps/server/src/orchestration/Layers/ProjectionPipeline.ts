@@ -895,12 +895,32 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
         }
 
         case "thread.turn-interrupt-requested": {
-          if (event.payload.turnId === undefined) {
+          let interruptTurnId = event.payload.turnId;
+          if (interruptTurnId === undefined) {
+            const projectedSession = yield* projectionThreadSessionRepository.getByThreadId({
+              threadId: event.payload.threadId,
+            });
+            const projectedThread = yield* projectionThreadRepository.getById({
+              threadId: event.payload.threadId,
+            });
+            const latestRunningTurn = (yield* projectionTurnRepository.listByThreadId({
+              threadId: event.payload.threadId,
+            }))
+              .filter((row) => row.turnId !== null && row.state === "running")
+              .toSorted((left, right) => left.requestedAt.localeCompare(right.requestedAt))
+              .at(-1);
+            interruptTurnId =
+              (Option.isSome(projectedSession) ? projectedSession.value.activeTurnId : null) ??
+              (Option.isSome(projectedThread) ? projectedThread.value.latestTurnId : null) ??
+              latestRunningTurn?.turnId ??
+              undefined;
+          }
+          if (interruptTurnId === undefined) {
             return;
           }
           const existingTurn = yield* projectionTurnRepository.getByTurnId({
             threadId: event.payload.threadId,
-            turnId: event.payload.turnId,
+            turnId: interruptTurnId,
           });
           if (Option.isSome(existingTurn)) {
             yield* projectionTurnRepository.upsertByTurnId({
@@ -913,7 +933,7 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
             return;
           }
           yield* projectionTurnRepository.upsertByTurnId({
-            turnId: event.payload.turnId,
+            turnId: interruptTurnId,
             threadId: event.payload.threadId,
             pendingMessageId: null,
             assistantMessageId: null,

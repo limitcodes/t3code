@@ -205,6 +205,7 @@ export function formatElapsed(startIso: string, endIso: string | undefined): str
 
 type LatestTurnTiming = Pick<OrchestrationLatestTurn, "turnId" | "startedAt" | "completedAt">;
 type SessionActivityState = Pick<ThreadSession, "orchestrationStatus" | "activeTurnId">;
+type SessionInterruptState = SessionActivityState & Pick<ThreadSession, "createdAt">;
 
 export function isLatestTurnSettled(
   latestTurn: LatestTurnTiming | null,
@@ -228,6 +229,34 @@ export function deriveActiveWorkStartedAt(
   return sendStartedAt;
 }
 
+export function deriveInterruptTurnId(
+  latestTurn: LatestTurnTiming | null,
+  session: SessionInterruptState | null,
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): TurnId | null {
+  const latestActivityTurnId = [...activities]
+    .toSorted(compareActivitiesByOrder)
+    .findLast((activity) => {
+      if (!activity?.turnId) {
+        return false;
+      }
+      if (session?.createdAt && activity.createdAt < session.createdAt) {
+        return false;
+      }
+      return true;
+    })?.turnId;
+
+  if (!isLatestTurnSettled(latestTurn, session)) {
+    return latestTurn?.turnId ?? session?.activeTurnId ?? latestActivityTurnId ?? null;
+  }
+
+  if (session?.activeTurnId) {
+    return session.activeTurnId;
+  }
+
+  return latestActivityTurnId ?? null;
+}
+
 function requestKindFromRequestType(requestType: unknown): PendingApproval["requestKind"] | null {
   switch (requestType) {
     case "command_execution_approval":
@@ -241,6 +270,14 @@ function requestKindFromRequestType(requestType: unknown): PendingApproval["requ
     default:
       return "other";
   }
+}
+
+function isUnknownPendingApprovalRequestDetail(detail: string | undefined): boolean {
+  const normalized = detail?.toLowerCase();
+  return normalized !== undefined
+    ? normalized.includes("unknown pending approval request") ||
+        normalized.includes("unknown pending permission request")
+    : false;
 }
 
 export function derivePendingApprovals(
@@ -295,7 +332,7 @@ export function derivePendingApprovals(
     if (
       activity.kind === "provider.approval.respond.failed" &&
       requestId &&
-      detail?.includes("Unknown pending permission request")
+      isUnknownPendingApprovalRequestDetail(detail)
     ) {
       openByRequestId.delete(requestId);
       continue;

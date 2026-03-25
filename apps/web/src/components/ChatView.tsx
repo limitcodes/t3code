@@ -120,6 +120,7 @@ import {
 import {
   deriveConfiguredModelOptions,
   deriveConfiguredReasoningState,
+  deriveInterruptTurnId,
   deriveLatestModelRerouteNotice,
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -952,7 +953,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [sendPhaseByThreadId, setSendPhaseByThreadId] = useState<Record<string, SendPhase>>({});
   const [sendStartedAt, setSendStartedAt] = useState<string | null>(null);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
-  const [isInterruptingTurn, setIsInterruptingTurn] = useState(false);
+  const [pendingInterruptRequest, setPendingInterruptRequest] = useState<{
+    threadId: ThreadId;
+    turnId: TurnId | null;
+  } | null>(null);
+  const [optimisticResolvedApprovalRequestIds, setOptimisticResolvedApprovalRequestIds] = useState<
+    ApprovalRequestId[]
+  >([]);
   const [respondingRequestIds, setRespondingRequestIds] = useState<ApprovalRequestId[]>([]);
   const [respondingUserInputRequestIds, setRespondingUserInputRequestIds] = useState<
     ApprovalRequestId[]
@@ -1976,9 +1983,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => hasToolActivityForTurn(threadActivities, activeLatestTurn?.turnId),
     [activeLatestTurn?.turnId, threadActivities],
   );
-  const pendingApprovals = useMemo(
+  const rawPendingApprovals = useMemo(
     () => derivePendingApprovals(threadActivities, activeThread?.session?.createdAt),
     [activeThread?.session?.createdAt, threadActivities],
+  );
+  const pendingApprovals = useMemo(
+    () =>
+      rawPendingApprovals.filter(
+        (approval) => !optimisticResolvedApprovalRequestIds.includes(approval.requestId),
+      ),
+    [optimisticResolvedApprovalRequestIds, rawPendingApprovals],
   );
   const pendingUserInputs = useMemo(
     () => derivePendingUserInputs(threadActivities, activeThread?.session?.createdAt),
@@ -2048,6 +2062,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [activePendingApproval, activeProject?.id, settings.approvalRules],
   );
   const isComposerApprovalState = activePendingApproval !== null;
+  const activeInterruptTurnId = deriveInterruptTurnId(
+    activeLatestTurn,
+    activeThread?.session ?? null,
+    threadActivities,
+  );
+  const isInterruptingTurn =
+    pendingInterruptRequest !== null &&
+    activeThread?.id === pendingInterruptRequest.threadId &&
+    phase === "running" &&
+    (pendingInterruptRequest.turnId === null ||
+      activeInterruptTurnId === null ||
+      pendingInterruptRequest.turnId === activeInterruptTurnId);
   const hasComposerHeader =
     isComposerApprovalState ||
     pendingUserInputs.length > 0 ||
@@ -2057,6 +2083,57 @@ export default function ChatView({ threadId }: ChatViewProps) {
     requestId: string | null;
     questionId: string | null;
   } | null>(null);
+  useEffect(() => {
+    if (
+      !activeThread ||
+      activeThread.id !== pendingInterruptRequest?.threadId ||
+      phase !== "running"
+    ) {
+      if (pendingInterruptRequest !== null) {
+        setPendingInterruptRequest(null);
+      }
+      return;
+    }
+    if (
+      pendingInterruptRequest.turnId !== null &&
+      activeInterruptTurnId !== null &&
+      pendingInterruptRequest.turnId !== activeInterruptTurnId
+    ) {
+      setPendingInterruptRequest(null);
+    }
+  }, [activeInterruptTurnId, activeThread, pendingInterruptRequest, phase]);
+
+  useEffect(() => {
+    const openRequestIds = new Set(rawPendingApprovals.map((approval) => approval.requestId));
+    setOptimisticResolvedApprovalRequestIds((existing) =>
+      existing.filter((requestId) => openRequestIds.has(requestId)),
+    );
+  }, [rawPendingApprovals]);
+
+  useEffect(() => {
+    const failedRequestIds = new Set(
+      threadActivities.flatMap((activity) => {
+        if (activity.kind !== "provider.approval.respond.failed") {
+          return [];
+        }
+        const requestId =
+          typeof activity.payload === "object" &&
+          activity.payload !== null &&
+          "requestId" in activity.payload &&
+          typeof activity.payload.requestId === "string"
+            ? activity.payload.requestId
+            : null;
+        return requestId ? [requestId as ApprovalRequestId] : [];
+      }),
+    );
+    if (failedRequestIds.size === 0) {
+      return;
+    }
+    setOptimisticResolvedApprovalRequestIds((existing) =>
+      existing.filter((requestId) => !failedRequestIds.has(requestId)),
+    );
+  }, [threadActivities]);
+
   useEffect(() => {
     const nextCustomAnswer = activePendingProgress?.customAnswer;
     if (typeof nextCustomAnswer !== "string") {
@@ -4846,18 +4923,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onInterrupt = async () => {
     const api = readNativeApi();
     if (!api || !activeThread || isInterruptingTurn) return;
-    setIsInterruptingTurn(true);
+    const targetTurnId = activeInterruptTurnId;
+    setPendingInterruptRequest({
+      threadId: activeThread.id,
+      turnId: targetTurnId,
+    });
     try {
       await api.orchestration.dispatchCommand({
         type: "thread.turn.interrupt",
         commandId: newCommandId(),
         threadId: activeThread.id,
-        ...((activeLatestTurn?.turnId ?? activeThread.session?.activeTurnId)
-          ? { turnId: activeLatestTurn?.turnId ?? activeThread.session?.activeTurnId ?? undefined }
-          : {}),
+        ...(targetTurnId ? { turnId: targetTurnId } : {}),
         createdAt: new Date().toISOString(),
       });
     } catch (err) {
+      setPendingInterruptRequest(null);
       const message = err instanceof Error ? err.message : "Failed to stop generation.";
       setThreadError(activeThread.id, message);
       toastManager.add({
@@ -4865,8 +4945,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
         title: "Failed to stop generation",
         description: message,
       });
-    } finally {
-      setIsInterruptingTurn(false);
     }
   };
 
@@ -4881,6 +4959,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
       setRespondingRequestIds((existing) =>
         existing.includes(requestId) ? existing : [...existing, requestId],
       );
+      setOptimisticResolvedApprovalRequestIds((existing) =>
+        existing.includes(requestId) ? existing : [...existing, requestId],
+      );
       await api.orchestration
         .dispatchCommand({
           type: "thread.approval.respond",
@@ -4891,6 +4972,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
           createdAt: new Date().toISOString(),
         })
         .catch((err: unknown) => {
+          setOptimisticResolvedApprovalRequestIds((existing) =>
+            existing.filter((id) => id !== requestId),
+          );
           setStoreThreadError(
             threadId,
             err instanceof Error ? err.message : "Failed to submit approval decision.",
@@ -6266,6 +6350,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                     <ComposerPendingApprovalActions
                       requestId={activePendingApproval.requestId}
                       isResponding={respondingRequestIds.includes(activePendingApproval.requestId)}
+                      submittingLabel={chatCopy.submitting}
                       onRespondToApproval={onRespondToApproval}
                     />
                   </div>
@@ -6511,17 +6596,25 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           className="app-interactive-motion flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 disabled:cursor-wait disabled:opacity-70 motion-safe:hover:-translate-y-px motion-reduce:hover:scale-100 sm:h-8 sm:w-8"
                           onClick={() => void onInterrupt()}
                           disabled={isInterruptingTurn}
-                          aria-label={chatCopy.stopGeneration}
+                          aria-label={
+                            isInterruptingTurn
+                              ? chatCopy.stoppingGeneration
+                              : chatCopy.stopGeneration
+                          }
                         >
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 12 12"
-                            fill="currentColor"
-                            aria-hidden="true"
-                          >
-                            <rect x="2" y="2" width="8" height="8" rx="1.5" />
-                          </svg>
+                          {isInterruptingTurn ? (
+                            <RefreshCwIcon className="size-3 animate-spin" aria-hidden="true" />
+                          ) : (
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 12 12"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <rect x="2" y="2" width="8" height="8" rx="1.5" />
+                            </svg>
+                          )}
                         </button>
                       ) : pendingUserInputs.length === 0 ? (
                         showPlanFollowUpPrompt ? (
@@ -7496,6 +7589,7 @@ const ComposerPendingApprovalPanel = memo(function ComposerPendingApprovalPanel(
 interface ComposerPendingApprovalActionsProps {
   requestId: ApprovalRequestId;
   isResponding: boolean;
+  submittingLabel: string;
   onRespondToApproval: (
     requestId: ApprovalRequestId,
     decision: ProviderApprovalDecision,
@@ -7505,6 +7599,7 @@ interface ComposerPendingApprovalActionsProps {
 const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActions({
   requestId,
   isResponding,
+  submittingLabel,
   onRespondToApproval,
 }: ComposerPendingApprovalActionsProps) {
   return (
@@ -7520,7 +7615,7 @@ const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActi
           void onRespondToApproval(requestId, "cancel");
         }}
       >
-        Cancel approval
+        {isResponding ? submittingLabel : "Cancel approval"}
       </Button>
       <Button
         size="sm"
@@ -7533,7 +7628,7 @@ const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActi
           void onRespondToApproval(requestId, "decline");
         }}
       >
-        Decline
+        {isResponding ? submittingLabel : "Decline"}
       </Button>
       <Button
         size="sm"
@@ -7546,7 +7641,7 @@ const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActi
           void onRespondToApproval(requestId, "acceptForSession");
         }}
       >
-        Always allow this session
+        {isResponding ? submittingLabel : "Always allow this session"}
       </Button>
       <Button
         size="sm"
@@ -7559,7 +7654,7 @@ const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActi
           void onRespondToApproval(requestId, "accept");
         }}
       >
-        Approve once
+        {isResponding ? submittingLabel : "Approve once"}
       </Button>
     </>
   );
@@ -7984,6 +8079,7 @@ function getChatSurfaceCopy(language: AppLanguage) {
       submitAnswers: "ثبت پاسخ ها",
       nextQuestion: "سوال بعدی",
       stopGeneration: "توقف تولید",
+      stoppingGeneration: "در حال توقف تولید",
       workedFor: (elapsed: string) => `مدت کار ${elapsed}`,
       workingFor: (elapsed: string) => `در حال کار (${elapsed})`,
       working: "در حال کار...",
@@ -8020,6 +8116,7 @@ function getChatSurfaceCopy(language: AppLanguage) {
     submitAnswers: "Submit answers",
     nextQuestion: "Next question",
     stopGeneration: "Stop generation",
+    stoppingGeneration: "Stopping generation",
     workedFor: (elapsed: string) => `Worked for ${elapsed}`,
     workingFor: (elapsed: string) => `Working for ${elapsed}`,
     working: "Working...",

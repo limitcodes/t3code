@@ -4,6 +4,7 @@ import "../index.css";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
   ORCHESTRATION_WS_METHODS,
+  type EventId,
   type MessageId,
   type OrchestrationReadModel,
   type ProjectId,
@@ -11,6 +12,7 @@ import {
   type ServerConfig,
   type ServerOpenCodeState,
   type ThreadId,
+  TurnId,
   type WsWelcomePayload,
   WS_CHANNELS,
   WS_METHODS,
@@ -361,6 +363,80 @@ function createSnapshotWithThreadError(error: string): OrchestrationReadModel {
   };
 }
 
+function createSnapshotWithInterruptFallbackTurn(turnId: TurnId): OrchestrationReadModel {
+  const snapshot = createSnapshotForTargetUser({
+    targetMessageId: "msg-user-stop-fallback" as MessageId,
+    targetText: "stop fallback target",
+    sessionStatus: "running",
+  });
+
+  return {
+    ...snapshot,
+    threads: snapshot.threads.map((thread) =>
+      thread.id === THREAD_ID
+        ? Object.assign({}, thread, {
+            latestTurn: null,
+            activities: [
+              {
+                id: "activity-running-turn-fallback" as EventId,
+                tone: "tool" as const,
+                kind: "tool.started",
+                summary: "Running tool",
+                payload: {},
+                turnId,
+                createdAt: isoAt(10),
+              },
+            ],
+            session: thread.session
+              ? Object.assign({}, thread.session, {
+                  activeTurnId: null,
+                  startedAt: isoAt(5),
+                })
+              : thread.session,
+          })
+        : thread,
+    ),
+  };
+}
+
+function createSnapshotWithPendingApproval(): OrchestrationReadModel {
+  const snapshot = createSnapshotForTargetUser({
+    targetMessageId: "msg-user-approval-request" as MessageId,
+    targetText: "approval target",
+    sessionStatus: "running",
+  });
+
+  return {
+    ...snapshot,
+    threads: snapshot.threads.map((thread) =>
+      thread.id === THREAD_ID
+        ? Object.assign({}, thread, {
+            activities: [
+              {
+                id: "activity-approval-requested" as EventId,
+                tone: "approval" as const,
+                kind: "approval.requested",
+                summary: "Command approval requested",
+                payload: {
+                  requestId: "approval-request-browser",
+                  requestKind: "command",
+                  detail: "Allow npm test?",
+                },
+                turnId: "turn-approval-browser" as TurnId,
+                createdAt: isoAt(10),
+              },
+            ],
+            session: thread.session
+              ? Object.assign({}, thread.session, {
+                  startedAt: isoAt(5),
+                })
+              : thread.session,
+          })
+        : thread,
+    ),
+  };
+}
+
 function addThreadToSnapshot(
   snapshot: OrchestrationReadModel,
   threadId: ThreadId,
@@ -480,6 +556,11 @@ function createSnapshotWithLongProposedPlan(): OrchestrationReadModel {
 
 function resolveWsRpc(body: WsRequestEnvelope["body"]): unknown {
   const tag = body._tag;
+  if (tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+    return {
+      sequence: wsRequests.length,
+    };
+  }
   if (tag === ORCHESTRATION_WS_METHODS.getSnapshot) {
     return fixture.snapshot;
   }
@@ -1565,6 +1646,96 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
 
       expect(getComputedStyle(stopButton).cursor).toBe("pointer");
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("dispatches a turn interrupt from the browser using the latest in-session activity turn id", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotWithInterruptFallbackTurn(TurnId.makeUnsafe("turn-running-fallback")),
+    });
+
+    try {
+      const stopButton = await waitForElement(
+        () => document.querySelector<HTMLButtonElement>('button[aria-label="Stop generation"]'),
+        "Unable to find stop generation button.",
+      );
+      stopButton.click();
+
+      await vi.waitFor(
+        () => {
+          const interruptRequest = wsRequests.find(
+            (request) =>
+              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              request.command &&
+              typeof request.command === "object" &&
+              !Array.isArray(request.command) &&
+              "type" in request.command &&
+              request.command.type === "thread.turn.interrupt",
+          );
+          expect(interruptRequest).toMatchObject({
+            _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+            command: {
+              type: "thread.turn.interrupt",
+              threadId: THREAD_ID,
+              turnId: "turn-running-fallback",
+            },
+          });
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      await expect
+        .element(page.getByRole("button", { name: "Stopping generation" }))
+        .toBeDisabled();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("dispatches approval responses from the browser composer actions", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotWithPendingApproval(),
+    });
+
+    try {
+      const approveButton = await waitForElement(
+        () =>
+          Array.from(document.querySelectorAll("button")).find(
+            (button) => button.textContent?.trim() === "Approve once",
+          ) as HTMLButtonElement | null,
+        "Unable to find the approval action button.",
+      );
+      approveButton.click();
+
+      await vi.waitFor(
+        () => {
+          const approvalRequest = wsRequests.find(
+            (request) =>
+              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              request.command &&
+              typeof request.command === "object" &&
+              !Array.isArray(request.command) &&
+              "type" in request.command &&
+              request.command.type === "thread.approval.respond",
+          );
+          expect(approvalRequest).toMatchObject({
+            _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+            command: {
+              type: "thread.approval.respond",
+              threadId: THREAD_ID,
+              requestId: "approval-request-browser",
+              decision: "accept",
+            },
+          });
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      await expect
+        .element(page.getByRole("button", { name: "Approve once" }))
+        .not.toBeInTheDocument();
     } finally {
       await mounted.cleanup();
     }

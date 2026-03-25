@@ -7,6 +7,7 @@ import {
   deriveConfiguredModelOptions,
   deriveConfiguredModelOptionsFromActivityGroups,
   deriveConfiguredReasoningState,
+  deriveInterruptTurnId,
   deriveLatestModelRerouteNotice,
   getProviderPickerBackingProvider,
   getProviderPickerKindForSelection,
@@ -163,6 +164,35 @@ describe("derivePendingApprovals", () => {
         payload: {
           requestId: "req-stale-1",
           detail: "Unknown pending permission request: req-stale-1",
+        },
+      }),
+    ];
+
+    expect(derivePendingApprovals(activities)).toEqual([]);
+  });
+
+  it("clears stale pending approvals when provider reports unknown pending approval request", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "approval-open-stale-approval-wording",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "approval.requested",
+        summary: "Command approval requested",
+        tone: "approval",
+        payload: {
+          requestId: "req-stale-2",
+          requestKind: "command",
+        },
+      }),
+      makeActivity({
+        id: "approval-failed-stale-approval-wording",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        kind: "provider.approval.respond.failed",
+        summary: "Provider approval response failed",
+        tone: "error",
+        payload: {
+          requestId: "req-stale-2",
+          detail: "Unknown pending approval request: req-stale-2",
         },
       }),
     ];
@@ -1154,6 +1184,53 @@ describe("deriveActiveWorkStartedAt", () => {
         "2026-02-27T21:11:00.000Z",
       ),
     ).toBe("2026-02-27T21:11:00.000Z");
+  });
+});
+
+describe("deriveInterruptTurnId", () => {
+  it("falls back to the latest in-session activity turn when session metadata lags", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "activity-old-turn",
+        createdAt: "2026-02-23T00:00:00.000Z",
+        turnId: TurnId.makeUnsafe("turn-old"),
+      }),
+      makeActivity({
+        id: "activity-current-turn",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        turnId: TurnId.makeUnsafe("turn-current"),
+      }),
+    ];
+
+    expect(
+      deriveInterruptTurnId(
+        null,
+        {
+          orchestrationStatus: "running",
+          activeTurnId: undefined,
+          createdAt: "2026-02-23T00:00:02.000Z",
+        },
+        activities,
+      ),
+    ).toEqual(TurnId.makeUnsafe("turn-current"));
+  });
+
+  it("prefers the unsettled latest turn before scanning activities", () => {
+    expect(
+      deriveInterruptTurnId(
+        {
+          turnId: TurnId.makeUnsafe("turn-latest"),
+          startedAt: "2026-02-23T00:00:05.000Z",
+          completedAt: null,
+        },
+        {
+          orchestrationStatus: "running",
+          activeTurnId: undefined,
+          createdAt: "2026-02-23T00:00:02.000Z",
+        },
+        [],
+      ),
+    ).toEqual(TurnId.makeUnsafe("turn-latest"));
   });
 });
 

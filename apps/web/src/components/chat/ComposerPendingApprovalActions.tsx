@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 interface ComposerPendingApprovalActionsProps {
   requestId: ApprovalRequestId;
   isResponding: boolean;
+  submittingLabel: string;
   onRespondToApproval: (
     requestId: ApprovalRequestId,
     decision: ProviderApprovalDecision,
@@ -14,6 +15,7 @@ interface ComposerPendingApprovalActionsProps {
 export const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActions({
   requestId,
   isResponding,
+  submittingLabel,
   onRespondToApproval,
 }: ComposerPendingApprovalActionsProps) {
   return (
@@ -29,7 +31,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
           void onRespondToApproval(requestId, "cancel");
         }}
       >
-        Cancel approval
+        {isResponding ? submittingLabel : "Cancel approval"}
       </Button>
       <Button
         size="sm"
@@ -42,7 +44,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
           void onRespondToApproval(requestId, "decline");
         }}
       >
-        Decline
+        {isResponding ? submittingLabel : "Decline"}
       </Button>
       <Button
         size="sm"
@@ -55,7 +57,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
           void onRespondToApproval(requestId, "acceptForSession");
         }}
       >
-        Always allow this session
+        {isResponding ? submittingLabel : "Always allow this session"}
       </Button>
       <Button
         size="sm"
@@ -68,7 +70,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
           void onRespondToApproval(requestId, "accept");
         }}
       >
-        Approve once
+        {isResponding ? submittingLabel : "Approve once"}
       </Button>
     </>
   );

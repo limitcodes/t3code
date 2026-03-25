@@ -1710,6 +1710,117 @@ projectionLayer("OrchestrationProjectionPipeline", (it) => {
       ]);
     }),
   );
+
+  it.effect(
+    "marks the active projected turn interrupted even when the interrupt event omits turnId",
+    () =>
+      Effect.gen(function* () {
+        const projectionPipeline = yield* OrchestrationProjectionPipeline;
+        const eventStore = yield* OrchestrationEventStore;
+        const sql = yield* SqlClient.SqlClient;
+        const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
+          eventStore
+            .append(event)
+            .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+
+        yield* appendAndProject({
+          type: "project.created",
+          eventId: EventId.makeUnsafe("evt-interrupt-fallback-1"),
+          aggregateKind: "project",
+          aggregateId: ProjectId.makeUnsafe("project-interrupt-fallback"),
+          occurredAt: "2026-02-26T14:00:00.000Z",
+          commandId: CommandId.makeUnsafe("cmd-interrupt-fallback-1"),
+          causationEventId: null,
+          correlationId: CorrelationId.makeUnsafe("cmd-interrupt-fallback-1"),
+          metadata: {},
+          payload: {
+            projectId: ProjectId.makeUnsafe("project-interrupt-fallback"),
+            title: "Interrupt Fallback Project",
+            workspaceRoot: "/repo/project",
+            defaultModel: "gpt-5.4",
+            scripts: [],
+            createdAt: "2026-02-26T14:00:00.000Z",
+            updatedAt: "2026-02-26T14:00:00.000Z",
+          },
+        });
+
+        yield* appendAndProject({
+          type: "thread.created",
+          eventId: EventId.makeUnsafe("evt-interrupt-fallback-2"),
+          aggregateKind: "thread",
+          aggregateId: ThreadId.makeUnsafe("thread-interrupt-fallback"),
+          occurredAt: "2026-02-26T14:00:01.000Z",
+          commandId: CommandId.makeUnsafe("cmd-interrupt-fallback-2"),
+          causationEventId: null,
+          correlationId: CorrelationId.makeUnsafe("cmd-interrupt-fallback-2"),
+          metadata: {},
+          payload: {
+            threadId: ThreadId.makeUnsafe("thread-interrupt-fallback"),
+            projectId: ProjectId.makeUnsafe("project-interrupt-fallback"),
+            title: "Interrupt Fallback Thread",
+            model: "gpt-5.4",
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt: "2026-02-26T14:00:01.000Z",
+            updatedAt: "2026-02-26T14:00:01.000Z",
+          },
+        });
+
+        yield* appendAndProject({
+          type: "thread.session-set",
+          eventId: EventId.makeUnsafe("evt-interrupt-fallback-3"),
+          aggregateKind: "thread",
+          aggregateId: ThreadId.makeUnsafe("thread-interrupt-fallback"),
+          occurredAt: "2026-02-26T14:00:02.000Z",
+          commandId: CommandId.makeUnsafe("cmd-interrupt-fallback-3"),
+          causationEventId: null,
+          correlationId: CorrelationId.makeUnsafe("cmd-interrupt-fallback-3"),
+          metadata: {},
+          payload: {
+            threadId: ThreadId.makeUnsafe("thread-interrupt-fallback"),
+            session: {
+              threadId: ThreadId.makeUnsafe("thread-interrupt-fallback"),
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: TurnId.makeUnsafe("turn-running-fallback"),
+              lastError: null,
+              startedAt: "2026-02-26T14:00:02.000Z",
+              updatedAt: "2026-02-26T14:00:02.000Z",
+            },
+          },
+        });
+
+        yield* appendAndProject({
+          type: "thread.turn-interrupt-requested",
+          eventId: EventId.makeUnsafe("evt-interrupt-fallback-4"),
+          aggregateKind: "thread",
+          aggregateId: ThreadId.makeUnsafe("thread-interrupt-fallback"),
+          occurredAt: "2026-02-26T14:00:03.000Z",
+          commandId: CommandId.makeUnsafe("cmd-interrupt-fallback-4"),
+          causationEventId: null,
+          correlationId: CorrelationId.makeUnsafe("cmd-interrupt-fallback-4"),
+          metadata: {},
+          payload: {
+            threadId: ThreadId.makeUnsafe("thread-interrupt-fallback"),
+            createdAt: "2026-02-26T14:00:03.000Z",
+          },
+        });
+
+        const turnRows = yield* sql<{
+          readonly turnId: string;
+          readonly status: string;
+        }>`
+        SELECT
+          turn_id AS "turnId",
+          state AS "status"
+        FROM projection_turns
+        WHERE thread_id = 'thread-interrupt-fallback'
+      `;
+        assert.deepEqual(turnRows, [{ turnId: "turn-running-fallback", status: "interrupted" }]);
+      }),
+  );
 });
 
 it.effect("restores pending turn-start metadata across projection pipeline restart", () =>
