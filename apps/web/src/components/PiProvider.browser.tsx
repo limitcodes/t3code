@@ -5,7 +5,8 @@ import { type ProviderKind, type ServerProviderStatus } from "@t3tools/contracts
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
-import { ProviderModelPicker, ProviderSetupDialog } from "./ChatView";
+import { ProviderModelPicker } from "./chat/ProviderModelPicker";
+import { ProviderSetupDialog } from "./ChatView";
 
 function createQueryClient() {
   return new QueryClient({

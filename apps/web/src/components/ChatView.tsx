@@ -17,7 +17,6 @@ import {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ResolvedKeybindingsConfig,
   type ProviderApprovalDecision,
-  type ServerCopilotUsage,
   type ServerOpenCodeState,
   type ServerProviderMcpStatus,
   type ServerProviderStatus,
@@ -34,14 +33,12 @@ import {
 } from "@t3tools/contracts";
 import {
   getDefaultModel,
-  getModelContextWindowInfo,
   getModelDisplayName,
   getDefaultReasoningEffort,
   getReasoningEffortOptions,
   isCodexOpenRouterModel,
   normalizeModelSlug,
 } from "@t3tools/shared/model";
-import { formatGitHubCopilotPlan } from "@t3tools/shared/copilotPlan";
 import {
   memo,
   type ReactNode,
@@ -82,16 +79,10 @@ import {
 import {
   serverConfigQueryOptions,
   serverCopilotReasoningProbeQueryOptions,
-  serverCopilotUsageQueryOptions,
   serverOpenCodeStateQueryOptions,
   serverQueryKeys,
 } from "~/lib/serverReactQuery";
-import { formatCopilotRequestCost } from "~/lib/copilotBilling";
-import {
-  describeContextWindowState,
-  formatCompactTokenCount,
-  shouldHideContextWindowForModel,
-} from "~/lib/contextWindow";
+import { describeContextWindowState, shouldHideContextWindowForModel } from "~/lib/contextWindow";
 import {
   isCut3CompatibleOpenRouterModelOption,
   isOpenRouterGuaranteedFreeSlug,
@@ -99,6 +90,14 @@ import {
   supportsOpenRouterReasoningEffortControl,
 } from "~/lib/openRouterModels";
 import { getModelPickerOptionDisplayParts } from "~/lib/modelPickerOptionDisplay";
+import {
+  type PickerModelOption,
+  mergeModelOptions,
+  getModelOptionsForProviderPicker,
+  findModelOptionBySlug,
+  getModelOptionContextLabel,
+  getProviderPickerSectionDescription,
+} from "~/lib/modelPickerHelpers";
 import { buildComposerMcpServerItems, providerSupportsMcp } from "../mcpServers";
 import { buildModelOptionsForSend } from "../chatDispatchOptions";
 
@@ -136,8 +135,6 @@ import {
   type LatestModelRerouteNotice,
   type PendingApproval,
   type PendingUserInput,
-  type ProviderPickerKind,
-  PROVIDER_OPTIONS,
   deriveWorkLogEntries,
   hasToolActivityForTurn,
   isLatestTurnSettled,
@@ -230,25 +227,11 @@ import {
   MenuShortcut,
   MenuTrigger,
 } from "./ui/menu";
-import {
-  ClaudeAI,
-  CursorIcon,
-  Gemini,
-  GitHubIcon,
-  KimiIcon,
-  Icon,
-  OpenAI,
-  OpenRouterIcon,
-  OpenCodeIcon,
-  VisualStudioCode,
-  VisualStudioCodeInsiders,
-  Zed,
-} from "./Icons";
+import { CursorIcon, Icon, VisualStudioCode, VisualStudioCodeInsiders, Zed } from "./Icons";
 import { cn, isMacPlatform, isWindowsPlatform, randomUUID } from "~/lib/utils";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Command, CommandItem, CommandList } from "./ui/command";
-import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import {
   Dialog,
   DialogDescription,
@@ -263,6 +246,13 @@ import { toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "./ProjectScriptsControl";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
+import {
+  ProviderModelPicker,
+  PROVIDER_ICON_BY_PROVIDER,
+  AVAILABLE_PROVIDER_OPTIONS,
+  UNAVAILABLE_PROVIDER_OPTIONS,
+  COMING_SOON_PROVIDER_OPTIONS,
+} from "./chat/ProviderModelPicker";
 import { ThreadTasksPanel } from "./chat/ThreadTasksPanel";
 import { ThreadExportDialog } from "./chat/ThreadExportDialog";
 import { ThreadShareDialog } from "./chat/ThreadShareDialog";
@@ -288,7 +278,7 @@ import {
   type AppServiceTier,
   useAppSettings,
 } from "../appSettings";
-import { getAppLanguageDetails, type AppLanguage } from "../appLanguage";
+import { type AppLanguage } from "../appLanguage";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
   type ComposerImageAttachment,
@@ -351,14 +341,6 @@ const EMPTY_PROJECT_SKILL_ISSUES: ProjectSkillIssue[] = [];
 const EMPTY_AVAILABLE_EDITORS: EditorId[] = [];
 const EMPTY_PROVIDER_STATUSES: ServerProviderStatus[] = [];
 const EMPTY_PROVIDER_MCP_STATUSES: ServerProviderMcpStatus[] = [];
-type PickerModelOption = {
-  slug: string;
-  name: string;
-  isCustom?: boolean;
-  supportsReasoning?: boolean;
-  supportsImageInput?: boolean;
-  contextWindowTokens?: number;
-};
 const EMPTY_PROVIDER_STATUS_MODEL_OPTIONS_BY_PROVIDER = {
   codex: [],
   copilot: [],
@@ -7853,77 +7835,6 @@ const ComposerPlanFollowUpBanner = memo(function ComposerPlanFollowUpBanner({
   );
 });
 
-function isAvailableProviderOption(option: (typeof PROVIDER_OPTIONS)[number]): option is {
-  value: AvailableProviderPickerKind;
-  label: string;
-  available: true;
-} {
-  return option.available && option.value !== "claudeCode";
-}
-
-const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption);
-const UNAVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter((option) => !option.available);
-const COMING_SOON_PROVIDER_OPTIONS = [{ id: "gemini", label: "Gemini", icon: Gemini }] as const;
-
-function mergeModelOptions(
-  base: ReadonlyArray<PickerModelOption>,
-  extra: ReadonlyArray<PickerModelOption>,
-): Array<PickerModelOption> {
-  const merged: Array<PickerModelOption> = [];
-  const indexBySlug = new Map<string, number>();
-
-  for (const option of [...base, ...extra]) {
-    const existingIndex = indexBySlug.get(option.slug);
-    if (existingIndex === undefined) {
-      indexBySlug.set(option.slug, merged.length);
-      merged.push(option);
-      continue;
-    }
-
-    const existing = merged[existingIndex]!;
-    const supportsReasoning = existing.supportsReasoning ?? option.supportsReasoning;
-    const supportsImageInput = existing.supportsImageInput ?? option.supportsImageInput;
-    const contextWindowTokens = existing.contextWindowTokens ?? option.contextWindowTokens;
-    merged[existingIndex] = {
-      ...option,
-      ...existing,
-      ...(supportsReasoning !== undefined ? { supportsReasoning } : {}),
-      ...(supportsImageInput !== undefined ? { supportsImageInput } : {}),
-      ...(contextWindowTokens !== undefined ? { contextWindowTokens } : {}),
-    };
-  }
-
-  return merged;
-}
-
-function getModelOptionContextLabel(
-  provider: ProviderKind,
-  modelOption: PickerModelOption,
-  openRouterContextLengthsBySlug?: ReadonlyMap<string, number | null>,
-  opencodeContextLengthsBySlug?: ReadonlyMap<string, number | null>,
-): string {
-  const contextInfo = getModelContextWindowInfo(modelOption.slug, provider);
-  const catalogContextLength = openRouterContextLengthsBySlug?.get(modelOption.slug) ?? null;
-  const opencodeContextLength = opencodeContextLengthsBySlug?.get(modelOption.slug) ?? null;
-  const contextLabel =
-    opencodeContextLength !== null
-      ? formatCompactTokenCount(opencodeContextLength)
-      : typeof modelOption.contextWindowTokens === "number"
-        ? formatCompactTokenCount(modelOption.contextWindowTokens)
-        : contextInfo?.totalTokens !== undefined
-          ? formatCompactTokenCount(contextInfo.totalTokens)
-          : catalogContextLength !== null
-            ? formatCompactTokenCount(catalogContextLength)
-            : "Unknown";
-
-  if (provider !== "copilot") {
-    return contextLabel;
-  }
-
-  const requestCost = formatCopilotRequestCost(modelOption.slug);
-  return [contextLabel, requestCost].filter(Boolean).join(" · ");
-}
-
 function getCustomModelOptionsByProvider(
   settings: {
     customCodexModels: readonly string[];
@@ -7974,97 +7885,6 @@ function getCustomModelOptionsByProvider(
   };
 }
 
-const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
-  codex: OpenAI,
-  openrouter: OpenRouterIcon,
-  copilot: GitHubIcon,
-  kimi: KimiIcon,
-  opencode: OpenCodeIcon,
-  pi: BotIcon,
-  claudeCode: ClaudeAI,
-  cursor: CursorIcon,
-};
-
-function getModelOptionsForProviderPicker(
-  providerPickerKind: AvailableProviderPickerKind,
-  modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<PickerModelOption>>,
-  openRouterModelOptions: ReadonlyArray<PickerModelOption>,
-  opencodeModelOptions: ReadonlyArray<PickerModelOption>,
-): ReadonlyArray<PickerModelOption> {
-  switch (providerPickerKind) {
-    case "openrouter":
-      return openRouterModelOptions;
-    case "codex":
-      return modelOptionsByProvider.codex.filter((option) => !isCodexOpenRouterModel(option.slug));
-    case "copilot":
-      return modelOptionsByProvider.copilot;
-    case "opencode":
-      return mergeModelOptions(modelOptionsByProvider.opencode, opencodeModelOptions);
-    case "kimi":
-      return modelOptionsByProvider.kimi;
-    case "pi":
-      return modelOptionsByProvider.pi;
-    default:
-      return modelOptionsByProvider.codex;
-  }
-}
-
-function findModelOptionBySlug(
-  options: ReadonlyArray<PickerModelOption>,
-  slug: string | null | undefined,
-): PickerModelOption | null {
-  const normalizedSlug = typeof slug === "string" && slug.trim().length > 0 ? slug.trim() : null;
-  if (!normalizedSlug) {
-    return null;
-  }
-  return options.find((option) => option.slug === normalizedSlug) ?? null;
-}
-
-function resolveModelForProviderPicker(
-  provider: ProviderKind,
-  value: string,
-  options: ReadonlyArray<PickerModelOption>,
-): ModelSlug | null {
-  const trimmedValue = value.trim();
-  if (!trimmedValue) {
-    return null;
-  }
-
-  const direct = options.find((option) => option.slug === trimmedValue);
-  if (direct) {
-    return direct.slug;
-  }
-
-  const byName = options.find((option) => option.name.toLowerCase() === trimmedValue.toLowerCase());
-  if (byName) {
-    return byName.slug;
-  }
-
-  const normalized = normalizeModelSlug(trimmedValue, provider);
-  if (!normalized) {
-    return null;
-  }
-
-  const resolved = options.find((option) => option.slug === normalized);
-  if (resolved) {
-    return resolved.slug;
-  }
-
-  return null;
-}
-
-function formatCopilotQuotaDate(iso: string, language: AppLanguage): string {
-  const parsed = Date.parse(iso);
-  if (Number.isNaN(parsed)) {
-    return language === "fa" ? "به زودی" : "soon";
-  }
-  return new Intl.DateTimeFormat(getAppLanguageDetails(language).locale, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(parsed));
-}
-
 function getChatSurfaceCopy(language: AppLanguage) {
   if (language === "fa") {
     return {
@@ -8108,8 +7928,8 @@ function getChatSurfaceCopy(language: AppLanguage) {
     chatLabel: "Chat",
     fullAccess: "Full access",
     supervised: "Supervised",
-    fullAccessTooltip: "Full access — click to require approvals",
-    approvalRequiredTooltip: "Approval required — click for full access",
+    fullAccessTooltip: "Full access enabled; click to require approval",
+    approvalRequiredTooltip: "Approval required; click for full access",
     preparingWorktree: "Preparing worktree...",
     previous: "Previous",
     submitting: "Submitting...",
@@ -8118,13 +7938,13 @@ function getChatSurfaceCopy(language: AppLanguage) {
     stopGeneration: "Stop generation",
     stoppingGeneration: "Stopping generation",
     workedFor: (elapsed: string) => `Worked for ${elapsed}`,
-    workingFor: (elapsed: string) => `Working for ${elapsed}`,
+    workingFor: (elapsed: string) => `Working (${elapsed})`,
     working: "Working...",
-    sendMessageToStart: "Send a message to start the conversation.",
+    sendMessageToStart: "Send a message to start.",
     attachImagesAfterPlanQuestions: "Attach images after answering plan questions.",
     moreComposerControls: "More composer controls",
     reasoning: "Reasoning",
-    fastMode: "Fast Mode",
+    fastMode: "Fast mode",
     mode: "Mode",
     access: "Access",
     comingSoon: "Coming soon",
@@ -8139,180 +7959,6 @@ function getChatSurfaceCopy(language: AppLanguage) {
     off: "off",
     on: "on",
   };
-}
-
-type AvailableCopilotUsage = {
-  status: "available";
-  source: "copilot_internal_user";
-  fetchedAt: string;
-  login: string;
-  plan?: string;
-  entitlement: number;
-  remaining: number;
-  used: number;
-  percentRemaining: number;
-  overagePermitted: boolean;
-  overageCount: number;
-  unlimited: boolean;
-  resetAt: string;
-};
-
-type UnavailableCopilotUsage = {
-  status: "requires-auth" | "unavailable";
-  fetchedAt: string;
-  source?: "copilot_internal_user";
-  message: string;
-};
-
-function isAvailableCopilotUsage(usage: ServerCopilotUsage | null): usage is AvailableCopilotUsage {
-  return usage !== null && usage.status === "available";
-}
-
-function isUnavailableCopilotUsage(
-  usage: ServerCopilotUsage | null,
-): usage is UnavailableCopilotUsage {
-  return usage !== null && usage.status !== "available";
-}
-
-function renderCopilotUsageSummary(
-  usage: ServerCopilotUsage | null,
-  isLoading: boolean,
-  language: AppLanguage,
-) {
-  if (isLoading && usage === null) {
-    return (
-      <div className="space-y-1 px-2 py-2.5">
-        <div className="font-medium text-[11px] text-muted-foreground/85 uppercase tracking-[0.12em]">
-          {language === "fa" ? "مصرف GitHub Copilot" : "GitHub Copilot billing"}
-        </div>
-        <div className="text-sm">
-          {language === "fa"
-            ? "در حال بارگذاری درخواست های پریمیوم..."
-            : "Loading premium requests..."}
-        </div>
-      </div>
-    );
-  }
-
-  if (usage === null) {
-    return null;
-  }
-
-  if (isUnavailableCopilotUsage(usage)) {
-    return (
-      <div className="space-y-1 px-2 py-2.5">
-        <div className="font-medium text-[11px] text-muted-foreground/85 uppercase tracking-[0.12em]">
-          {language === "fa" ? "مصرف GitHub Copilot" : "GitHub Copilot billing"}
-        </div>
-        <div className="text-sm">
-          {language === "fa" ? "درخواست های پریمیوم در دسترس نیست" : "Premium requests unavailable"}
-        </div>
-        <div className="text-muted-foreground/80 text-xs leading-relaxed">{usage.message}</div>
-      </div>
-    );
-  }
-
-  if (!isAvailableCopilotUsage(usage)) {
-    return null;
-  }
-
-  const planLabel = formatGitHubCopilotPlan(usage.plan);
-
-  return (
-    <div className="space-y-1 px-2 py-2.5">
-      <div className="font-medium text-[11px] text-muted-foreground/85 uppercase tracking-[0.12em]">
-        {language === "fa" ? "مصرف باقی مانده" : "Usage remaining"}
-      </div>
-      <div className="text-sm font-medium">
-        {language === "fa" ? "درخواست های پریمیوم" : "Premium requests"}
-      </div>
-      <div className="text-muted-foreground/90 text-xs">
-        {language === "fa"
-          ? `${usage.remaining} / ${usage.entitlement} باقی مانده · بازنشانی در ${formatCopilotQuotaDate(usage.resetAt, language)}`
-          : `${usage.remaining} / ${usage.entitlement} left · resets ${formatCopilotQuotaDate(usage.resetAt, language)}`}
-      </div>
-      <div className="text-muted-foreground/75 text-[11px]">
-        {[planLabel, usage.login].filter(Boolean).join(" · ")}
-      </div>
-      <div className="pt-1 text-muted-foreground/80 text-[11px] leading-relaxed">
-        {language === "fa"
-          ? "برآورد هزینه اضافه برای هر درخواست پس از تمام شدن درخواست های پریمیوم شامل شده نمایش داده می شود."
-          : "Per-request overage below is estimated after included premium requests are exhausted."}
-      </div>
-    </div>
-  );
-}
-
-function renderProviderContextWindowSummary(input: {
-  provider: ProviderKind;
-  model: string | null | undefined;
-  tokenUsage?: unknown;
-  opencodeContextLengthsBySlug?: ReadonlyMap<string, number | null>;
-}) {
-  if (shouldHideContextWindowForModel(input.provider, input.model)) {
-    return null;
-  }
-
-  const state = describeContextWindowState({
-    provider: input.provider,
-    model: input.model,
-    tokenUsage: input.tokenUsage,
-    ...getDocumentedContextWindowOverride(input),
-  });
-
-  if (
-    state.totalTokens !== null &&
-    state.usedTokens !== null &&
-    state.totalLabel &&
-    state.usedLabel &&
-    state.remainingLabel
-  ) {
-    const usageTitle =
-      state.usageScope === "thread" ? "Latest thread snapshot" : "Last completed turn";
-    return (
-      <div className="space-y-1 px-2 py-2.5">
-        <div className="font-medium text-[11px] text-muted-foreground/85 uppercase tracking-[0.12em]">
-          Context window
-        </div>
-        <div className="text-sm font-medium">{usageTitle}</div>
-        <div className="text-muted-foreground/90 text-xs">{`${state.usedLabel} / ${state.totalLabel} used`}</div>
-        <div className="text-muted-foreground/90 text-xs">{`${state.remainingLabel} left`}</div>
-        {state.note ? (
-          <div className="text-muted-foreground/75 text-[11px] leading-relaxed">{state.note}</div>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (state.totalTokens !== null && state.totalLabel) {
-    return (
-      <div className="space-y-1 px-2 py-2.5">
-        <div className="font-medium text-[11px] text-muted-foreground/85 uppercase tracking-[0.12em]">
-          Context window
-        </div>
-        <div className="text-sm font-medium">{`${state.totalLabel} documented total`}</div>
-        <div className="text-muted-foreground/90 text-xs">
-          Usage appears once the provider reports it.
-        </div>
-        {state.note ? (
-          <div className="text-muted-foreground/75 text-[11px] leading-relaxed">{state.note}</div>
-        ) : null}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-1 px-2 py-2.5">
-      <div className="font-medium text-[11px] text-muted-foreground/85 uppercase tracking-[0.12em]">
-        Context window
-      </div>
-      <div className="text-sm">Total context window unavailable</div>
-      <div className="text-muted-foreground/80 text-xs leading-relaxed">
-        {state.note ??
-          "This provider does not currently expose a separately documented total for this model."}
-      </div>
-    </div>
-  );
 }
 
 const OPENCODE_MODELS_DEV_CONTEXT_NOTE =
@@ -8520,25 +8166,6 @@ function getProviderStatusBadge(status: ServerProviderStatus | null): ProviderSt
   }
 
   return { label: "Detected", variant: "info" };
-}
-
-function getProviderPickerSectionDescription(provider: AvailableProviderPickerKind): string {
-  switch (provider) {
-    case "codex":
-      return "Native Codex models from your local Codex setup.";
-    case "openrouter":
-      return "OpenRouter-routed models that run through Codex.";
-    case "copilot":
-      return "GitHub Copilot chat models discovered from your local runtime.";
-    case "kimi":
-      return "Kimi Code sessions backed by either `kimi login` / `/login` CLI auth or a configured Kimi API key.";
-    case "opencode":
-      return "OpenCode models discovered from your local OpenCode runtime.";
-    case "pi":
-      return "Pi agent harness sessions discovered from your local Pi auth/config using provider/model ids.";
-    default:
-      return "Available models.";
-  }
 }
 
 export function ProviderSetupDialog(props: {
@@ -9082,461 +8709,6 @@ function ManageModelsDialog(props: {
     </Dialog>
   );
 }
-
-export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
-  activeThread: Thread | null;
-  provider: ProviderKind;
-  providerPickerKind: AvailableProviderPickerKind;
-  language: AppLanguage;
-  model: ModelSlug;
-  lockedProvider: ProviderKind | null;
-  allModelOptionsByProvider: Record<ProviderKind, ReadonlyArray<PickerModelOption>>;
-  visibleModelOptionsByProvider: Record<ProviderKind, ReadonlyArray<PickerModelOption>>;
-  openRouterModelOptions: ReadonlyArray<PickerModelOption>;
-  opencodeModelOptions: ReadonlyArray<PickerModelOption>;
-  openRouterContextLengthsBySlug: ReadonlyMap<string, number | null>;
-  opencodeContextLengthsBySlug: ReadonlyMap<string, number | null>;
-  serviceTierSetting: AppServiceTier;
-  hasHiddenModels: boolean;
-  modelLabelOverride?: string;
-  compact?: boolean;
-  disabled?: boolean;
-  onOpenProviderSetup: () => void;
-  onOpenManageModels: () => void;
-  onProviderModelChange: (provider: AvailableProviderPickerKind, model: ModelSlug) => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const { disabled, onProviderModelChange } = props;
-  const copilotUsageQuery = useQuery(serverCopilotUsageQueryOptions(isOpen));
-  const chatCopy = getChatSurfaceCopy(props.language);
-  const selectedProviderOptions = useMemo(
-    () =>
-      getModelOptionsForProviderPicker(
-        props.providerPickerKind,
-        props.visibleModelOptionsByProvider,
-        props.openRouterModelOptions,
-        props.opencodeModelOptions,
-      ),
-    [
-      props.opencodeModelOptions,
-      props.openRouterModelOptions,
-      props.providerPickerKind,
-      props.visibleModelOptionsByProvider,
-    ],
-  );
-  const selectedModelLabel =
-    props.modelLabelOverride ??
-    selectedProviderOptions.find((option) => option.slug === props.model)?.name ??
-    getModelDisplayName(props.model, props.provider);
-  const selectedProviderLabel =
-    AVAILABLE_PROVIDER_OPTIONS.find((option) => option.value === props.providerPickerKind)?.label ??
-    props.providerPickerKind;
-  const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[props.providerPickerKind];
-
-  useEffect(() => {
-    if (!isOpen) {
-      setQuery("");
-    }
-  }, [isOpen]);
-
-  const handleModelChange = useCallback(
-    (
-      providerPickerKind: AvailableProviderPickerKind,
-      value: string,
-      options: ReadonlyArray<PickerModelOption>,
-      isDisabledByProviderLock: boolean,
-    ) => {
-      if (disabled || isDisabledByProviderLock || !value) {
-        return;
-      }
-      const backingProvider = getProviderPickerBackingProvider(providerPickerKind);
-      if (!backingProvider) {
-        return;
-      }
-      const resolvedModel = resolveModelForProviderPicker(backingProvider, value, options);
-      if (!resolvedModel) {
-        return;
-      }
-      onProviderModelChange(providerPickerKind, resolvedModel);
-      setIsOpen(false);
-    },
-    [disabled, onProviderModelChange],
-  );
-
-  const normalizedQuery = query.trim().toLowerCase();
-  const providerSections = useMemo(
-    () =>
-      AVAILABLE_PROVIDER_OPTIONS.map((option) => {
-        const backingProvider = getProviderPickerBackingProvider(option.value);
-        if (!backingProvider) {
-          return null;
-        }
-
-        const modelOptions = getModelOptionsForProviderPicker(
-          option.value,
-          props.visibleModelOptionsByProvider,
-          props.openRouterModelOptions,
-          props.opencodeModelOptions,
-        );
-        const filteredModelOptions = modelOptions.filter((modelOption) => {
-          if (!normalizedQuery) {
-            return true;
-          }
-          const displayParts = getModelPickerOptionDisplayParts(modelOption);
-          const haystack = [
-            option.label,
-            modelOption.slug,
-            modelOption.name,
-            displayParts.providerLabel,
-            displayParts.modelLabel,
-          ]
-            .join(" ")
-            .toLowerCase();
-          return haystack.includes(normalizedQuery);
-        });
-
-        if (filteredModelOptions.length === 0 && normalizedQuery) {
-          return null;
-        }
-
-        const isDisabledByProviderLock =
-          props.lockedProvider !== null && props.lockedProvider !== backingProvider;
-        const providerContextSummary =
-          option.value === props.providerPickerKind
-            ? renderProviderContextWindowSummary({
-                provider: backingProvider,
-                model:
-                  props.activeThread?.session?.provider === backingProvider
-                    ? (props.activeThread.model ?? props.model)
-                    : props.model,
-                tokenUsage:
-                  props.activeThread?.session?.provider === backingProvider
-                    ? props.activeThread.session.tokenUsage
-                    : undefined,
-                opencodeContextLengthsBySlug: props.opencodeContextLengthsBySlug,
-              })
-            : null;
-
-        return {
-          option,
-          backingProvider,
-          modelOptions: filteredModelOptions,
-          isDisabledByProviderLock,
-          providerContextSummary,
-        };
-      }).filter((section): section is NonNullable<typeof section> => section !== null),
-    [
-      normalizedQuery,
-      props.activeThread,
-      props.model,
-      props.openRouterModelOptions,
-      props.opencodeContextLengthsBySlug,
-      props.opencodeModelOptions,
-      props.providerPickerKind,
-      props.visibleModelOptionsByProvider,
-      props.lockedProvider,
-    ],
-  );
-
-  const unavailableOptions = useMemo(() => {
-    const placeholderOptions = [
-      ...UNAVAILABLE_PROVIDER_OPTIONS.map((option) => ({
-        id: option.value,
-        label: option.label,
-        icon: PROVIDER_ICON_BY_PROVIDER[option.value],
-      })),
-      ...COMING_SOON_PROVIDER_OPTIONS.map((option) => ({
-        id: option.id,
-        label: option.label,
-        icon: option.icon,
-      })),
-    ];
-    if (!normalizedQuery) {
-      return placeholderOptions;
-    }
-    return placeholderOptions.filter((option) =>
-      option.label.toLowerCase().includes(normalizedQuery),
-    );
-  }, [normalizedQuery]);
-
-  return (
-    <Popover
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (props.disabled) {
-          setIsOpen(false);
-          return;
-        }
-        setIsOpen(open);
-      }}
-    >
-      <PopoverTrigger
-        render={
-          <Button
-            size="sm"
-            variant="ghost"
-            data-chat-composer-control="provider-picker"
-            className={cn(
-              "app-interactive-motion h-auto min-h-9 min-w-0 shrink-0 justify-start overflow-hidden rounded-xl px-3 py-1.5 text-muted-foreground/70 shadow-none transition-[background-color,color,transform,box-shadow] hover:bg-muted/30 hover:text-foreground/85 motion-safe:hover:-translate-y-px sm:min-h-8",
-              props.compact ? "max-w-[11rem]" : "max-w-[13.75rem] sm:px-3.5",
-            )}
-            disabled={props.disabled}
-          />
-        }
-      >
-        <span className="flex min-w-0 items-center gap-2.5">
-          <ProviderIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/70" />
-          <span className="min-w-0 flex-1 text-left leading-tight">
-            <span className="block truncate text-sm text-foreground leading-tight">
-              {selectedModelLabel}
-            </span>
-            <span className="block truncate pt-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/65 leading-tight">
-              {selectedProviderLabel}
-            </span>
-          </span>
-          {props.provider === "codex" &&
-          shouldShowFastTierIcon(props.model, props.serviceTierSetting) ? (
-            <ZapIcon className="size-3.5 shrink-0 text-amber-500" />
-          ) : null}
-          <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
-        </span>
-      </PopoverTrigger>
-      <PopoverPopup align="start" side="top" className="w-[min(42rem,calc(100vw-1.5rem))] p-0">
-        <div className="flex max-h-[70vh] flex-col">
-          <div className="border-b border-border/60 p-3">
-            <div className="relative">
-              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
-              <Input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search models or providers"
-                className="pl-9"
-              />
-            </div>
-          </div>
-
-          <div className="flex-1 space-y-3 overflow-y-auto p-3">
-            {providerSections.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border/70 px-6 py-10 text-center">
-                <p className="font-medium text-sm text-foreground">
-                  No visible models match this search.
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Try a different model slug or open Manage models to restore hidden entries.
-                </p>
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                  {normalizedQuery ? (
-                    <Button size="sm" variant="outline" onClick={() => setQuery("")}>
-                      Clear search
-                    </Button>
-                  ) : null}
-                  {props.hasHiddenModels ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setIsOpen(false);
-                        props.onOpenManageModels();
-                      }}
-                    >
-                      <SlidersHorizontalIcon className="size-4" />
-                      Manage models
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              providerSections.map((section) => {
-                const OptionIcon = PROVIDER_ICON_BY_PROVIDER[section.option.value];
-                const isCurrentProvider = section.option.value === props.providerPickerKind;
-
-                return (
-                  <section
-                    key={section.option.value}
-                    className="overflow-hidden rounded-2xl border border-border/60 bg-background/95"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 bg-muted/20 px-4 py-3">
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <OptionIcon className="size-4 shrink-0 text-muted-foreground/80" />
-                          <span className="font-medium text-sm text-foreground">
-                            {section.option.label}
-                          </span>
-                          {isCurrentProvider ? (
-                            <Badge variant="secondary" size="sm">
-                              Current
-                            </Badge>
-                          ) : null}
-                          {section.isDisabledByProviderLock ? (
-                            <Badge variant="outline" size="sm">
-                              Locked
-                            </Badge>
-                          ) : null}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {getProviderPickerSectionDescription(section.option.value)}
-                        </p>
-                      </div>
-                      <Badge variant="outline" size="sm">
-                        {section.modelOptions.length} models
-                      </Badge>
-                    </div>
-
-                    {section.providerContextSummary ? (
-                      <div className="border-b border-border/50">
-                        {section.providerContextSummary}
-                      </div>
-                    ) : null}
-
-                    {section.option.value === "copilot" && isCurrentProvider ? (
-                      <div className="border-b border-border/50">
-                        {renderCopilotUsageSummary(
-                          copilotUsageQuery.data ?? null,
-                          copilotUsageQuery.isLoading,
-                          props.language,
-                        )}
-                      </div>
-                    ) : null}
-
-                    <div className="divide-y divide-border/50">
-                      {section.modelOptions.map((modelOption) => {
-                        const displayParts = getModelPickerOptionDisplayParts(modelOption);
-                        const contextLabel = getModelOptionContextLabel(
-                          section.backingProvider,
-                          modelOption,
-                          props.openRouterContextLengthsBySlug,
-                          props.opencodeContextLengthsBySlug,
-                        );
-                        const isSelected =
-                          section.option.value === props.providerPickerKind &&
-                          modelOption.slug === props.model;
-
-                        return (
-                          <button
-                            key={`${section.option.value}:${modelOption.slug}`}
-                            type="button"
-                            disabled={section.isDisabledByProviderLock || props.disabled}
-                            className={cn(
-                              "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/35 disabled:cursor-not-allowed disabled:opacity-60",
-                              isSelected && "bg-accent/30",
-                            )}
-                            onClick={() => {
-                              handleModelChange(
-                                section.option.value,
-                                modelOption.slug,
-                                section.modelOptions,
-                                section.isDisabledByProviderLock,
-                              );
-                            }}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex min-w-0 items-center gap-2">
-                                <span className="truncate font-medium text-sm text-foreground">
-                                  {displayParts.modelLabel}
-                                </span>
-                                {section.backingProvider === "codex" &&
-                                shouldShowFastTierIcon(
-                                  modelOption.slug,
-                                  props.serviceTierSetting,
-                                ) ? (
-                                  <Badge variant="warning" size="sm">
-                                    <ZapIcon className="size-3" />
-                                    Fast
-                                  </Badge>
-                                ) : null}
-                                {modelOption.supportsReasoning ? (
-                                  <Badge variant="outline" size="sm">
-                                    Reasoning
-                                  </Badge>
-                                ) : null}
-                                {modelOption.supportsImageInput ? (
-                                  <Badge variant="outline" size="sm">
-                                    Vision
-                                  </Badge>
-                                ) : null}
-                              </div>
-                              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                                {displayParts.usesScopedLayout ? (
-                                  <span className="rounded bg-muted/60 px-1.5 py-0.5 font-medium text-[11px] text-foreground/80">
-                                    {displayParts.providerLabel}
-                                  </span>
-                                ) : null}
-                                <span className="truncate">{modelOption.slug}</span>
-                                <span className="shrink-0">{contextLabel}</span>
-                              </div>
-                            </div>
-                            {isSelected ? (
-                              <Badge variant="secondary" size="sm">
-                                Selected
-                              </Badge>
-                            ) : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-                );
-              })
-            )}
-
-            {unavailableOptions.length > 0 ? (
-              <section className="rounded-2xl border border-dashed border-border/70 bg-muted/20 px-4 py-3">
-                <div className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground/80">
-                  {chatCopy.comingSoon}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {unavailableOptions.map((option) => {
-                    const OptionIcon = option.icon;
-                    return (
-                      <Badge key={option.id} variant="outline" size="sm">
-                        <OptionIcon className="size-3.5" />
-                        {option.label}
-                      </Badge>
-                    );
-                  })}
-                </div>
-              </section>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 bg-muted/20 px-3 py-2.5">
-            <p className="text-xs text-muted-foreground">
-              {props.hasHiddenModels
-                ? "Some models are hidden. Use Manage models to restore them."
-                : "Pick a model to switch this thread instantly."}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={() => {
-                  setIsOpen(false);
-                  props.onOpenProviderSetup();
-                }}
-              >
-                <PlusIcon className="size-3.5" />
-                Connect provider
-              </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={() => {
-                  setIsOpen(false);
-                  props.onOpenManageModels();
-                }}
-              >
-                <SlidersHorizontalIcon className="size-3.5" />
-                Manage models
-              </Button>
-            </div>
-          </div>
-        </div>
-      </PopoverPopup>
-    </Popover>
-  );
-});
 
 const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
   activePlan: boolean;
