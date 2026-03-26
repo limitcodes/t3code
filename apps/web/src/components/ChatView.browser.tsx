@@ -1786,9 +1786,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
 
       // The empty thread view and composer should still be visible.
-      await expect
-        .element(page.getByText("Send a message to start the conversation."))
-        .toBeInTheDocument();
+      await expect.element(page.getByText(/^Send a message to start\.?$/)).toBeInTheDocument();
       await expect.element(page.getByTestId("composer-editor")).toBeInTheDocument();
     } finally {
       await mounted.cleanup();

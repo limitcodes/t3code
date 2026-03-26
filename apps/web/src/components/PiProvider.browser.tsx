@@ -169,7 +169,6 @@ describe("Pi provider GUI", () => {
 
       expect(piSection.textContent).toContain("Pi");
       expect(piSection.textContent).toContain("github-copilot/claude-sonnet-4.5");
-      expect(piSection.textContent).toContain("Reasoning");
 
       const modelButton = await waitForElement(
         () =>
@@ -178,6 +177,7 @@ describe("Pi provider GUI", () => {
           ) ?? null,
         "Unable to find the Pi model button.",
       );
+      expect(modelButton.querySelector('[title="Supports reasoning"]')).toBeTruthy();
       modelButton.click();
 
       expect(onProviderModelChange).toHaveBeenCalledWith("pi", "github-copilot/claude-sonnet-4.5");
